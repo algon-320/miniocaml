@@ -51,6 +51,7 @@ rule token = parse
   | "call/cc"  { CALLCC }
   | "ListHead" { HEAD }
   | "ListTail" { TAIL }
+  | "Print"    { PRINT }
 
   (* 変数 *)
   | identifier

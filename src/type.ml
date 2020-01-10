@@ -2,6 +2,7 @@ type tyvar = string
 type ty =
   | TInt
   | TBool
+  | TUnit
   | TArrow of ty * ty
   | TVar of tyvar
   | TList of ty

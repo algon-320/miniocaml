@@ -8,11 +8,14 @@ let named_values:(string, Llvm.llvalue) Hashtbl.t = Hashtbl.create 10
 let int_of_bool b = if b then 1 else 0
 
 (* types *)
+let void_t = Llvm.void_type context
+let i8_ptr_t = Llvm.pointer_type (Llvm.i8_type context)
 let int_t = Llvm.i64_type context
 let byte_t = Llvm.i8_type context
 let byte_ptr_t = Llvm.pointer_type byte_t
 let bool_t = Llvm.i1_type context
 
+(* lltypeを要素に持つリストの型 *)
 let list_types:(Llvm.lltype, Llvm.lltype) Hashtbl.t = Hashtbl.create 10
 let get_list_type lltype =
   try
@@ -23,9 +26,11 @@ let get_list_type lltype =
     Hashtbl.add list_types lltype t;
     t
 
+(* Type -> lltyp *)
 let rec type_to_lltype = function
   | Type.TInt -> int_t
   | Type.TBool -> bool_t
+  | Type.TUnit -> void_t
   | Type.TList(t) ->
     (
       let tt = type_to_lltype t in
@@ -41,6 +46,7 @@ let get_type e = type_to_lltype (Tinf.get_type e)
 let rec gen_exp e = match e with
   | Exp.IntLit(n) -> Llvm.const_int int_t n
   | Exp.BoolLit(b) -> Llvm.const_int bool_t (int_of_bool b)
+  | Exp.UnitLit -> Llvm.const_null int_t
   | Exp.Add(e1, e2) ->
     let (lhs, rhs) = (gen_exp e1, gen_exp e2) in
     Llvm.build_add lhs rhs "add" builder
@@ -123,6 +129,10 @@ let rec gen_exp e = match e with
     let tail_p = Llvm.build_struct_gep cons_p 1 "tail_tail_p" builder in
     Llvm.build_load tail_p "tail_v" builder
 
+  | Exp.Skip(e1, e2) -> ignore (gen_exp e1); gen_exp e2
+  | Exp.Print(e) ->
+    failwith "Print: unimplemented"
+
   | _ -> failwith "gen_exp: unimplemented"
 
 let gen_function fun_name args ret_type body fpm =
@@ -143,7 +153,10 @@ let gen_function fun_name args ret_type body fpm =
 
   try
     let ret_val = gen_exp body in
-    ignore (Llvm.build_ret ret_val builder);
+    if ret_type = void_t then
+      ignore (Llvm.build_ret_void builder)
+    else
+      ignore (Llvm.build_ret ret_val builder);
     Llvm_analysis.assert_valid_function the_function;
     ignore (Llvm.PassManager.run_function the_function fpm);
     the_function
@@ -154,6 +167,6 @@ let gen_function fun_name args ret_type body fpm =
 let toplevel_count = ref 0
 let gen_toplevel e fpm =
   let name = "_toplevel_" ^ (string_of_int !toplevel_count) in
-  let code = gen_function name [||] (get_type e) e fpm in
+  let code = gen_function name [||] void_t (Exp.Skip(e, Exp.UnitLit)) fpm in
   toplevel_count := !toplevel_count + 1;
   code

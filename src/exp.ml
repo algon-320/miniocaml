@@ -1,6 +1,7 @@
 type exp =
   | IntLit      of int                  (* リテラル *)
   | BoolLit     of bool                 (* 真偽値リテラル *)
+  | UnitLit
 
   | Add         of exp * exp            (* 足し算 *)
   | Sub         of exp * exp            (* 引き算 *)
@@ -24,6 +25,9 @@ type exp =
   | ListCons    of exp * exp            (* h::t *)
   | ListHead    of exp                  (* List.hd list *)
   | ListTail    of exp                  (* List.tl list *)
+
+  | Skip        of exp * exp            (* 左辺を評価(捨てる)→右辺を評価 *)
+  | Print       of exp
 
   | CallCC      of exp                  (* call/cc *)
 

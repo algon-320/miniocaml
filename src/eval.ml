@@ -31,6 +31,7 @@ let rec string_of_exp e =
     | IntLit(x) -> Printf.sprintf "%d" x
     | BoolLit(true) -> Printf.sprintf "true"
     | BoolLit(false) -> Printf.sprintf "false"
+    | UnitLit -> Printf.sprintf "()"
 
     | Add(e1, e2) -> with_paren (parent_level > 1) (Printf.sprintf "%s + %s" (string_of_exp_impl e1 1) (string_of_exp_impl e2 1))
     | Sub(e1, e2) -> with_paren (parent_level > 1) (Printf.sprintf "%s - %s" (string_of_exp_impl e1 1) (string_of_exp_impl e2 2))
@@ -55,6 +56,9 @@ let rec string_of_exp e =
     | ListCons(h, t) -> Printf.sprintf "%s::%s" (string_of_exp h) (string_of_exp t)
     | ListHead(l) -> Printf.sprintf "ListHead(%s)" (string_of_exp l)
     | ListTail(l) -> Printf.sprintf "ListTail(%s)" (string_of_exp l)
+
+    | Skip(e1, e2) -> Printf.sprintf "%s; %s" (string_of_exp e1) (string_of_exp e2)
+    | Print(e) -> Printf.sprintf "Print %s" (string_of_exp e)
 
     | CallCC(e) -> Printf.sprintf "CallCC(%s)" (string_of_exp e)
 
@@ -90,7 +94,9 @@ and string_of_value v =
   | RecFunVal(f, arg, body, e) ->
     Printf.sprintf "{rec-fun %s: %s -> %s [%s]}" f arg (string_of_exp body) (string_of_env e)
   | ContVal(_) ->
-    Printf.sprintf "cont"
+    Printf.sprintf "{continuation}"
+  | UnitVal ->
+    Printf.sprintf "()"
 
 and string_of_env env =
   match env with
@@ -122,6 +128,7 @@ let rec eval e env cont =
   match e with
   | IntLit(n)     -> cont (IntVal(n))
   | BoolLit(n)    -> cont (BoolVal(n))
+  | UnitLit       -> cont UnitVal
   | Var(x)        -> cont (lookup x env)
 
   | Add(e1, e2)  -> binop_int ( + ) "(+)"   e1 e2 env cont
@@ -215,6 +222,18 @@ let rec eval e env cont =
         | ListVal(_::t) -> cont (ListVal(t))
         | _ -> failwith "ListHead: argument must be a list"
       )
+
+  (* e1を評価して結果を捨て、e2を評価した結果を返す *)
+  | Skip(e1, e2) -> eval e1 env (fun _ -> eval e2 env cont )
+
+  (* 式の評価結果を画面に表示する *)
+  | Print(e) ->
+    eval e env (
+      fun v ->
+        print_string @@ string_of_value v;
+        print_newline ();
+        cont UnitVal
+    )
 
   | CallCC(e) ->
     eval e env (fun func_val -> apply func_val (ContVal cont) cont)

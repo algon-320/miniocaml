@@ -43,14 +43,15 @@ open Exp
 %token CALLCC   // "call/cc"
 %token HEAD     // "ListHead"
 %token TAIL     // "ListTail"
+%token PRINT    // "Print"
 
 // 制御記号
 %token EOF
 
 // 演算子優先順位 (優先度の低いものほど先)
-%nonassoc IN ELSE ARROW WITH
+%nonassoc IF THEN IN ELSE ARROW WITH STMT_DELIM
 %left VBAR
-%left SEMICOL
+%left LIST_DELIM
 %left EQUAL NOTEQUAL GREATER LESS
 %right COLCOL
 %left PLUS MINUS
@@ -72,8 +73,8 @@ main:
 // リストリテラル
 list_inner:
   | exp { ListCons($1, ListEmpty) }
-  | exp SEMICOL { ListCons($1, ListEmpty) }
-  | exp SEMICOL list_inner { ListCons($1, $3) }
+  | exp SEMICOL %prec LIST_DELIM { ListCons($1, ListEmpty) }
+  | exp SEMICOL %prec LIST_DELIM list_inner { ListCons($1, $3) }
 
 // 関数の引数になれる式
 arg_exp:
@@ -81,6 +82,8 @@ arg_exp:
   | INT   { IntLit $1 }
   | TRUE  { BoolLit true }
   | FALSE { BoolLit false }
+
+  | LPAREN RPAREN { UnitLit }
   
   // 演算子を関数として使う
   | LPAREN PLUS RPAREN { OpAdd } 
@@ -149,16 +152,22 @@ exp:
   // match e with ...
   | MATCH exp WITH cases_rev { Match ($2, List.rev $4) }
   
+  // Skip
+  | exp SEMICOL %prec STMT_DELIM exp { Skip ($1, $3) }
+
+  // Print
+  | PRINT arg_exp { Print ($2) }
+
   | error
     { 
       let message =
         Printf.sprintf 
           "parse error near characters %d-%d"
           (Parsing.symbol_start ())
-	        (Parsing.symbol_end ())
-	    in
-	    failwith message
-	}
+          (Parsing.symbol_end ())
+      in
+      failwith message
+    }
 ;
 
 // match文のcaseの列

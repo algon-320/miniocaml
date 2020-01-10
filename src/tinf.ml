@@ -28,6 +28,7 @@ let rec subst_ty theta t =
   in match t with
   | TInt -> TInt
   | TBool -> TBool
+  | TUnit -> TUnit
   | TArrow(t2, t3) -> TArrow(subst_ty theta t2, subst_ty theta t3)
   | TVar(s) -> subst_ty1 theta s
   | TList(t) -> TList(subst_ty theta t)
@@ -102,6 +103,7 @@ let rec tinf te e n =
     )
   | IntLit(_)   -> (te, TInt, theta0, n)
   | BoolLit(_)  -> (te, TBool, theta0, n)
+  | UnitLit     -> (te, TUnit, theta0, n)
 
   | Add(e1,e2)
   | Sub(e1,e2)
@@ -208,6 +210,12 @@ let rec tinf te e n =
         (te3, t3, theta4, n2)
     )
 
+  | Skip(e1, e2) ->
+    let (te1, (_, t2), theta1, n1) = tinf_inorder2 te (e1, e2) n in
+    (te1, t2, theta1, n1)
+
+  | Print(_) -> (te, TUnit, theta0, n)
+
   | CallCC(c) ->
     (* c: ('a -> 'a) -> 'a,  CallCC(c): 'a *)
     let (te1, t1, theta1, n1) = tinf te c n in
@@ -270,7 +278,7 @@ let rename_typevar ty =
         (TVar (Printf.sprintf "'%c" alpha), n+1)
     in
     match ty with
-    | TInt | TBool -> (te, ty, n)
+    | TInt | TBool | TUnit -> (te, ty, n)
     | TVar(s) ->
       (
         try
@@ -297,6 +305,7 @@ let rec pretty_format_type ty =
   match ty with
   | TInt -> Printf.sprintf "TInt"
   | TBool -> Printf.sprintf "TBool"
+  | TUnit -> Printf.sprintf "TUnit"
   | TVar(s) -> Printf.sprintf "%s" s
   | TArrow(t1, t2) ->
     let (s1, s2) = (pretty_format_type t1, pretty_format_type t2) in

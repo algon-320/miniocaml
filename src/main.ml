@@ -42,8 +42,6 @@ let exec_jit str =
       ignore (Irgen.gen_toplevel ast fpm);
       let ee = Llvm_executionengine.create Irgen.the_module in
       let func_name = "_toplevel_" ^ (string_of_int (!Irgen.toplevel_count - 1)) in
-      let fp = Llvm_executionengine.get_function_address func_name (Foreign.funptr Ctypes.(void @-> returning int)) ee in
-      print_string "Evaluated to ";
-      print_int (fp ());
-      print_newline ();
+      let fp = Llvm_executionengine.get_function_address func_name (Foreign.funptr Ctypes.(void @-> returning void)) ee in
+      fp ();
     )
