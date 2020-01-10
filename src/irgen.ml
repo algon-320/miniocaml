@@ -43,6 +43,16 @@ let rec type_to_lltype = function
   | Type.TVar(name) -> failwith "unimplemented"
 let get_type e = type_to_lltype (Tinf.get_type e)
 
+(* Printfを宣言 *)
+let declare_printf () =
+  let i8 = Llvm.i8_type context in
+  let i8_ptr_t = Llvm.pointer_type i8 in
+  let printf_type = Llvm.var_arg_function_type void_t [|i8_ptr_t|] in
+  Llvm.declare_function "printf" printf_type the_module
+
+let fmtstr_int =
+  Llvm.define_global "fmtstr_int" (Llvm.const_string context "%lld\n\x00") the_module
+
 let rec gen_exp e = match e with
   | Exp.IntLit(n) -> Llvm.const_int int_t n
   | Exp.BoolLit(b) -> Llvm.const_int bool_t (int_of_bool b)
@@ -131,7 +141,17 @@ let rec gen_exp e = match e with
 
   | Exp.Skip(e1, e2) -> ignore (gen_exp e1); gen_exp e2
   | Exp.Print(e) ->
-    failwith "Print: unimplemented"
+    (
+      let printf = declare_printf () in
+      let v = gen_exp e in
+      match Tinf.get_type e with
+      | Type.TInt ->
+        let p = Llvm.build_pointercast fmtstr_int i8_ptr_t "fmtstr_int" builder in
+        Llvm.build_call printf [|p; v|] "" builder
+      | Type.TBool ->
+        failwith ""
+      | _ -> failwith "Print: unimplemented"
+    )
 
   | _ -> failwith "gen_exp: unimplemented"
 
