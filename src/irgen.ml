@@ -52,6 +52,10 @@ let declare_printf () =
 
 let fmtstr_int =
   Llvm.define_global "fmtstr_int" (Llvm.const_string context "%lld\n\x00") the_module
+let fmtstr_true =
+  Llvm.define_global "fmtstr_true" (Llvm.const_string context "true\n\x00") the_module
+let fmtstr_false =
+  Llvm.define_global "fmtstr_false" (Llvm.const_string context "false\n\x00") the_module
 
 let rec gen_exp e = match e with
   | Exp.IntLit(n) -> Llvm.const_int int_t n
@@ -83,38 +87,34 @@ let rec gen_exp e = match e with
     Llvm.build_icmp Llvm.Icmp.Slt lhs rhs "lt" builder
   | Exp.If(cond, e1, e2) ->
     let cond = gen_exp cond in
-
     let start_bb = Llvm.insertion_block builder in
     let the_function = Llvm.block_parent start_bb in
-
     let then_bb = Llvm.append_block context "then" the_function in
-    Llvm.position_at_end then_bb builder;
-    let then_val = gen_exp e1 in
-    let final_then_bb = Llvm.insertion_block builder in
-
     let else_bb = Llvm.append_block context "else" the_function in
-    Llvm.position_at_end else_bb builder;
-    let else_val = gen_exp e2 in
-    let final_else_bb = Llvm.insertion_block builder in
-
     let merge_bb = Llvm.append_block context "ifcont" the_function in
-    Llvm.position_at_end merge_bb builder;
-    let incoming = [(then_val, final_then_bb); (else_val, final_else_bb)] in
-    let phi = Llvm.build_phi incoming "iftmp" builder in
 
     Llvm.position_at_end start_bb builder;
     ignore (Llvm.build_cond_br cond then_bb else_bb builder);
 
-    (* jump to merge bb *)
-    Llvm.position_at_end final_then_bb builder;
+    Llvm.position_at_end then_bb builder;
+    let then_val = gen_exp e1 in
+    let final_then_bb = Llvm.insertion_block builder in
     ignore (Llvm.build_br merge_bb builder);
-    Llvm.position_at_end final_else_bb builder;
+
+    Llvm.position_at_end else_bb builder;
+    let else_val = gen_exp e2 in
+    let final_else_bb = Llvm.insertion_block builder in
     ignore (Llvm.build_br merge_bb builder);
 
     Llvm.position_at_end merge_bb builder;
-
-    phi
-
+    (
+      match Tinf.get_type e with
+      | Type.TUnit ->
+        Llvm.const_null int_t
+      | _ ->
+        let incoming = [(then_val, final_then_bb); (else_val, final_else_bb)] in
+        Llvm.build_phi incoming "iftmp" builder
+    )
   | Exp.ListEmpty -> Llvm.const_null byte_ptr_t
   | Exp.ListCons(head, tail) ->
     let list_t = get_type e in
@@ -149,7 +149,29 @@ let rec gen_exp e = match e with
         let p = Llvm.build_pointercast fmtstr_int i8_ptr_t "fmtstr_int" builder in
         Llvm.build_call printf [|p; v|] "" builder
       | Type.TBool ->
-        failwith ""
+        (
+          let start_bb = Llvm.insertion_block builder in
+          let the_function = Llvm.block_parent start_bb in
+          let then_bb = Llvm.append_block context "then" the_function in
+          let else_bb = Llvm.append_block context "else" the_function in
+          let merge_bb = Llvm.append_block context "ifcont" the_function in
+
+          Llvm.position_at_end start_bb builder;
+          ignore (Llvm.build_cond_br v then_bb else_bb builder);
+
+          Llvm.position_at_end then_bb builder;
+          let p = Llvm.build_pointercast fmtstr_true i8_ptr_t "fmtstr_true" builder in
+          ignore (Llvm.build_call printf [|p; v|] "" builder);
+          ignore (Llvm.build_br merge_bb builder);
+
+          Llvm.position_at_end else_bb builder;
+          let p = Llvm.build_pointercast fmtstr_false i8_ptr_t "fmtstr_false" builder in
+          ignore (Llvm.build_call printf [|p; v|] "" builder);
+          ignore (Llvm.build_br merge_bb builder);
+
+          Llvm.position_at_end merge_bb builder;
+          Llvm.const_null int_t
+        )
       | _ -> failwith "Print: unimplemented"
     )
 
