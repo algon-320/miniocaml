@@ -1,0 +1,11 @@
+(ocamllex lexer)
+(ocamlyacc parser)
+
+(library
+ (name main)
+ (libraries llvm llvm.analysis llvm.scalar_opts llvm.executionengine llvm.target)
+ (modules lexer parser main eval exp value type tinf irgen))
+
+(env
+ (dev
+  (flags (:standard -warn-error -a))))
