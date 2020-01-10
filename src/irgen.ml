@@ -43,19 +43,56 @@ let rec type_to_lltype = function
   | Type.TVar(name) -> failwith "unimplemented"
 let get_type e = type_to_lltype (Tinf.get_type e)
 
-(* Printfを宣言 *)
-let declare_printf () =
-  let i8 = Llvm.i8_type context in
-  let i8_ptr_t = Llvm.pointer_type i8 in
-  let printf_type = Llvm.var_arg_function_type void_t [|i8_ptr_t|] in
-  Llvm.declare_function "printf" printf_type the_module
-
 let fmtstr_int =
   Llvm.define_global "fmtstr_int" (Llvm.const_string context "%lld\n\x00") the_module
 let fmtstr_true =
   Llvm.define_global "fmtstr_true" (Llvm.const_string context "true\n\x00") the_module
 let fmtstr_false =
   Llvm.define_global "fmtstr_false" (Llvm.const_string context "false\n\x00") the_module
+
+
+let printf =
+  let i8 = Llvm.i8_type context in
+  let i8_ptr_t = Llvm.pointer_type i8 in
+  let printf_type = Llvm.var_arg_function_type void_t [|i8_ptr_t|] in
+  Llvm.declare_function "printf" printf_type the_module
+
+let int_printer =
+  let fun_ty = Llvm.function_type void_t [|int_t|] in
+  let f = Llvm.declare_function "int_printer" fun_ty the_module in
+  let v = (Llvm.params f).(0) in
+  let entry_bb = Llvm.append_block context "entry" f in
+  Llvm.position_at_end entry_bb builder;
+  let p = Llvm.build_pointercast fmtstr_int i8_ptr_t "fmtstr_int" builder in
+  ignore (Llvm.build_call printf [|p; v|] "" builder);
+  ignore (Llvm.build_ret_void builder);
+  f
+
+let bool_printer =
+  let fun_ty = Llvm.function_type void_t [|bool_t|] in
+  let f = Llvm.declare_function "bool_printer" fun_ty the_module in
+  let v = (Llvm.params f).(0) in
+  let entry_bb = Llvm.append_block context "entry" f in
+  let then_bb = Llvm.append_block context "then" f in
+  let else_bb = Llvm.append_block context "else" f in
+  let merge_bb = Llvm.append_block context "ifcont" f in
+
+  Llvm.position_at_end entry_bb builder;
+  ignore (Llvm.build_cond_br v then_bb else_bb builder);
+
+  Llvm.position_at_end then_bb builder;
+  let p = Llvm.build_pointercast fmtstr_true i8_ptr_t "fmtstr_true" builder in
+  ignore (Llvm.build_call printf [|p; v|] "" builder);
+  ignore (Llvm.build_br merge_bb builder);
+
+  Llvm.position_at_end else_bb builder;
+  let p = Llvm.build_pointercast fmtstr_false i8_ptr_t "fmtstr_false" builder in
+  ignore (Llvm.build_call printf [|p; v|] "" builder);
+  ignore (Llvm.build_br merge_bb builder);
+
+  Llvm.position_at_end merge_bb builder;
+  ignore (Llvm.build_ret_void builder);
+  f
 
 let rec gen_exp e = match e with
   | Exp.IntLit(n) -> Llvm.const_int int_t n
@@ -142,42 +179,17 @@ let rec gen_exp e = match e with
   | Exp.Skip(e1, e2) -> ignore (gen_exp e1); gen_exp e2
   | Exp.Print(e) ->
     (
-      let printf = declare_printf () in
       let v = gen_exp e in
       match Tinf.get_type e with
-      | Type.TInt ->
-        let p = Llvm.build_pointercast fmtstr_int i8_ptr_t "fmtstr_int" builder in
-        Llvm.build_call printf [|p; v|] "" builder
-      | Type.TBool ->
-        (
-          let start_bb = Llvm.insertion_block builder in
-          let the_function = Llvm.block_parent start_bb in
-          let then_bb = Llvm.append_block context "then" the_function in
-          let else_bb = Llvm.append_block context "else" the_function in
-          let merge_bb = Llvm.append_block context "ifcont" the_function in
-
-          Llvm.position_at_end start_bb builder;
-          ignore (Llvm.build_cond_br v then_bb else_bb builder);
-
-          Llvm.position_at_end then_bb builder;
-          let p = Llvm.build_pointercast fmtstr_true i8_ptr_t "fmtstr_true" builder in
-          ignore (Llvm.build_call printf [|p; v|] "" builder);
-          ignore (Llvm.build_br merge_bb builder);
-
-          Llvm.position_at_end else_bb builder;
-          let p = Llvm.build_pointercast fmtstr_false i8_ptr_t "fmtstr_false" builder in
-          ignore (Llvm.build_call printf [|p; v|] "" builder);
-          ignore (Llvm.build_br merge_bb builder);
-
-          Llvm.position_at_end merge_bb builder;
-          Llvm.const_null int_t
-        )
+      | Type.TInt -> Llvm.build_call int_printer [|v|] "" builder
+      | Type.TBool -> Llvm.build_call bool_printer [|v|] "" builder
+      | Type.TList(t) -> failwith ""
       | _ -> failwith "Print: unimplemented"
     )
 
   | _ -> failwith "gen_exp: unimplemented"
 
-let gen_function fun_name args ret_type body fpm =
+and gen_function fun_name args ret_type body fpm =
   let args_ty = Array.map (fun (_, ty) -> ty) args in
   let fun_ty = Llvm.function_type ret_type args_ty in
   let the_function = match Llvm.lookup_function fun_name the_module with
