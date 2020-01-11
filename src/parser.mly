@@ -49,10 +49,13 @@ open Exp
 %token EOF
 
 // 演算子優先順位 (優先度の低いものほど先)
-%nonassoc IF THEN IN ELSE ARROW WITH STMT_DELIM
+%nonassoc THEN ELSE
+%nonassoc IN WITH ARROW
+%nonassoc LET_IN
 %left VBAR
-%left LIST_DELIM
+%left SEMICOL
 %left EQUAL NOTEQUAL GREATER LESS
+%left APP
 %right COLCOL
 %left PLUS MINUS
 %left ASTERISK SLASH
@@ -72,9 +75,9 @@ main:
 
 // リストリテラル
 list_inner:
-  | exp { ListCons($1, ListEmpty) }
-  | exp SEMICOL %prec LIST_DELIM { ListCons($1, ListEmpty) }
-  | exp SEMICOL %prec LIST_DELIM list_inner { ListCons($1, $3) }
+  | arg_exp { ListCons($1, ListEmpty) }
+  | arg_exp SEMICOL { ListCons($1, ListEmpty) }
+  | arg_exp SEMICOL list_inner { ListCons($1, $3) }
 
 // 関数の引数になれる式
 arg_exp:
@@ -108,7 +111,7 @@ arg_exp:
 exp:
   | arg_exp { $1 }
   // 関数適用 (e1 e2)
-  | exp arg_exp { App ($1, $2) }
+  | exp arg_exp %prec APP { App ($1, $2) }
   // 符号の反転 -e
   | MINUS exp %prec UNARY { Sub (IntLit 0, $2) }
   // e1 + e2
@@ -131,32 +134,32 @@ exp:
   // e1 :: e2
   | exp COLCOL exp { ListCons ($1, $3) }
   // List.hd e
-  | HEAD arg_exp { ListHead $2 }
+  | HEAD arg_exp %prec APP { ListHead $2 }
   // List.tl e
-  | TAIL arg_exp { ListTail $2 }
+  | TAIL arg_exp %prec APP { ListTail $2 }
   
   // fun x -> e
   | FUN VAR ARROW exp { Fun ($2, $4) }
   
   // call/cc k -> e
-  | CALLCC exp { CallCC($2) }
+  | CALLCC exp %prec APP { CallCC($2) }
   
   // let x = e1 in e2
-  | LET VAR EQUAL exp IN exp { Let ($2, $4, $6) }
+  | LET VAR EQUAL exp IN exp %prec LET_IN { Let ($2, $4, $6) }
   // let rec f x = e1 in e2
-  | LET REC VAR VAR EQUAL exp IN exp { LetRec ($3, $4, $6, $8) }
+  | LET REC VAR VAR EQUAL exp IN exp %prec LET_IN { LetRec ($3, $4, $6, $8) }
   
   // if e1 then e2 else e3
   | IF exp THEN exp ELSE exp { If ($2, $4, $6) }
   
   // match e with ...
   | MATCH exp WITH cases_rev { Match ($2, List.rev $4) }
-  
+
   // Skip
-  | exp SEMICOL %prec STMT_DELIM exp { Skip ($1, $3) }
+  | exp SEMICOL exp { Skip ($1, $3) }
 
   // Print
-  | PRINT arg_exp { Print ($2) }
+  | PRINT arg_exp %prec APP { Print ($2) }
 
   | error
     { 
