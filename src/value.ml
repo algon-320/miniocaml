@@ -1,33 +1,33 @@
 open Exp
 
 type value =
-  | IntVal  of int
-  | BoolVal of bool
-  | UnitVal
-  | ListVal of value list
-  | FunVal of string * exp * (string * value) list
-  | RecFunVal of string * string * exp * (string * value) list
-  | ContVal of (value -> value)
+  | VInt  of int
+  | VBool of bool
+  | VUnit
+  | VList of value list
+  | VClos of string * string * exp * (string * value) list
+  | VCont of (value -> value)
 
 let rec string_of_value v =
   match v with
-  | IntVal(x) -> Printf.sprintf "%d" x
-  | BoolVal(true) -> Printf.sprintf "true"
-  | BoolVal(false) -> Printf.sprintf "false"
-  | ListVal(l) ->
+  | VInt(x) -> Printf.sprintf "%d" x
+  | VBool(true) -> Printf.sprintf "true"
+  | VBool(false) -> Printf.sprintf "false"
+  | VList(l) ->
     let rec str_of_list l =
       match l with
       | [] -> ""
       | h::[] -> Printf.sprintf "%s" (string_of_value h)
       | h::t -> Printf.sprintf "%s; %s" (string_of_value h)  (str_of_list t)
     in Printf.sprintf "[%s]" (str_of_list l)
-  | FunVal(arg, body, e) ->
-    Printf.sprintf "{fun %s -> %s [%s]}" arg (string_of_exp body) (string_of_env e)
-  | RecFunVal(f, arg, body, e) ->
-    Printf.sprintf "{rec-fun %s: %s -> %s [%s]}" f arg (string_of_exp body) (string_of_env e)
-  | ContVal(_) ->
+  | VClos(name, arg, body, e) ->
+    if name = "$" then
+      Printf.sprintf "{fun %s -> %s [%s]}" arg (string_of_exp body) (string_of_env e)
+    else
+      Printf.sprintf "{rec-fun %s: %s -> %s [%s]}" name arg (string_of_exp body) (string_of_env e)
+  | VCont(_) ->
     Printf.sprintf "{continuation}"
-  | UnitVal ->
+  | VUnit ->
     Printf.sprintf "()"
 and string_of_env env =
   match env with
