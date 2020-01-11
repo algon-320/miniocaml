@@ -6,7 +6,9 @@ let eval str =
   Eval.eval (parse str) (Eval.emptyenv ()) Eval.ident_cont
 
 let tinf str =
-  Tinf.pretty_format_type @@ Tinf.rename_typevar @@ Tinf.get_type @@ parse str
+  Tinf.rename_typevar @@ Tinf.get_type @@ parse str
+let tinf_print str =
+  Type.string_of_type @@ tinf str
 
 let fpm =
   let fpm = Llvm.PassManager.create_function Irgen.the_module in

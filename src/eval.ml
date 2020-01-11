@@ -1,109 +1,26 @@
 open Exp;;
 open Value;;
 
-let ident_cont = fun x -> x;;
+let ident_cont = fun x -> x
 
 let option_map f opt =
   match opt with
   | Some(x) -> Some(f x)
   | None -> None
-;;
 
 (* 環境 *)
-let emptyenv () = [];;
+let emptyenv () = []
 let ext env x v =
   (x, v) :: env
-;;
 let rec lookup x env =
   match env with
   | [] -> failwith ("unbound variable: " ^ x)
   | (y, v)::tl ->
     if x = y then v 
     else lookup x tl 
-;;
+
 (* 2つの環境を連結する *)
 let concat_env e1 e2 = e1 @ e2
-;;
-
-let rec string_of_exp e =
-  let rec string_of_exp_impl e parent_level =
-    match e with
-    | IntLit(x) -> Printf.sprintf "%d" x
-    | BoolLit(true) -> Printf.sprintf "true"
-    | BoolLit(false) -> Printf.sprintf "false"
-    | UnitLit -> Printf.sprintf "()"
-
-    | Add(e1, e2) -> with_paren (parent_level > 1) (Printf.sprintf "%s + %s" (string_of_exp_impl e1 1) (string_of_exp_impl e2 1))
-    | Sub(e1, e2) -> with_paren (parent_level > 1) (Printf.sprintf "%s - %s" (string_of_exp_impl e1 1) (string_of_exp_impl e2 2))
-    | Mul(e1, e2) -> with_paren (parent_level > 2) (Printf.sprintf "%s * %s" (string_of_exp_impl e1 2) (string_of_exp_impl e2 2))
-    | Div(e1, e2) -> with_paren (parent_level > 2) (Printf.sprintf "%s / %s" (string_of_exp_impl e1 2) (string_of_exp_impl e2 3))
-
-    | If(cond, e1, e2) -> Printf.sprintf "if %s then %s else %s" (string_of_exp cond) (string_of_exp e1) (string_of_exp e2)
-    | Eq(e1, e2) -> Printf.sprintf "%s = %s" (string_of_exp e1) (string_of_exp e2)
-    | Ne(e1, e2) -> Printf.sprintf "%s <> %s" (string_of_exp e1) (string_of_exp e2)
-    | Gt(e1, e2) -> Printf.sprintf "%s > %s" (string_of_exp e1) (string_of_exp e2)
-    | Lt(e1, e2) -> Printf.sprintf "%s < %s" (string_of_exp e1) (string_of_exp e2)
-
-    | Var(var) -> Printf.sprintf "%s" var
-    | Let(var, body, stmt) ->  Printf.sprintf "let %s = %s in %s" var (string_of_exp body) (string_of_exp stmt)
-    | LetRec(f, var, body, stmt) -> Printf.sprintf "let rec %s %s = %s in %s" f var (string_of_exp body) (string_of_exp stmt)
-    | Fun(var, body) -> Printf.sprintf "func %s -> %s" var (string_of_exp body)
-    | App(e1, e2) -> Printf.sprintf "(%s) (%s)" (string_of_exp e1) (string_of_exp e2)
-
-    | Match(e, _) -> Printf.sprintf "match %s with (.. omitted)" (string_of_exp e)
-
-    | ListEmpty -> Printf.sprintf "[]"
-    | ListCons(h, t) -> Printf.sprintf "%s::%s" (string_of_exp h) (string_of_exp t)
-    | ListHead(l) -> Printf.sprintf "ListHead(%s)" (string_of_exp l)
-    | ListTail(l) -> Printf.sprintf "ListTail(%s)" (string_of_exp l)
-
-    | Skip(e1, e2) -> Printf.sprintf "%s; %s" (string_of_exp e1) (string_of_exp e2)
-    | Print(e) -> Printf.sprintf "Print %s" (string_of_exp e)
-
-    | CallCC(e) -> Printf.sprintf "CallCC(%s)" (string_of_exp e)
-
-    | OpAdd -> Printf.sprintf "(+)"
-    | OpSub -> Printf.sprintf "(-)"
-    | OpMul -> Printf.sprintf "(*)"
-    | OpDiv -> Printf.sprintf "(/)"
-    | OpEq  -> Printf.sprintf "(=)"
-    | OpNe  -> Printf.sprintf "(<>)"
-    | OpGt  -> Printf.sprintf "(>)"
-    | OpLt  -> Printf.sprintf "(<)"
-  and with_paren p s =
-    if p then
-      Printf.sprintf "(%s)" s
-    else
-      s
-  in string_of_exp_impl e 0
-
-and string_of_value v =
-  match v with
-  | IntVal(x) -> Printf.sprintf "%d" x
-  | BoolVal(true) -> Printf.sprintf "true"
-  | BoolVal(false) -> Printf.sprintf "false"
-  | ListVal(l) ->
-    let rec str_of_list l =
-      match l with
-      | [] -> ""
-      | h::[] -> Printf.sprintf "%s" (string_of_value h)
-      | h::t -> Printf.sprintf "%s; %s" (string_of_value h)  (str_of_list t)
-    in Printf.sprintf "[%s]" (str_of_list l)
-  | FunVal(arg, body, e) ->
-    Printf.sprintf "{fun %s -> %s [%s]}" arg (string_of_exp body) (string_of_env e)
-  | RecFunVal(f, arg, body, e) ->
-    Printf.sprintf "{rec-fun %s: %s -> %s [%s]}" f arg (string_of_exp body) (string_of_env e)
-  | ContVal(_) ->
-    Printf.sprintf "{continuation}"
-  | UnitVal ->
-    Printf.sprintf "()"
-
-and string_of_env env =
-  match env with
-  | [] -> ""
-  | h::t -> let (name, value) = h in
-    Printf.sprintf "(%s:%s),%s" name (string_of_value value) (string_of_env t)
-;;
 
 (* 評価器 *)
 let rec eval e env cont =
@@ -257,4 +174,3 @@ and apply f arg cont =
     eval body e cont
   | ContVal(cont) -> cont arg
   | x -> failwith (Printf.sprintf "(Function Apply): first argument must be a function value, but `%s`" (string_of_value x))
-;;

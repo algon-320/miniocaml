@@ -81,7 +81,7 @@ let get_list_printer list_type =
   try
     Hashtbl.find list_printers list_type
   with Not_found ->
-    let fun_ty = Llvm.function_type void_t [|bool_t|] in
+    let fun_ty = Llvm.function_type void_t [|list_type|] in
     let f = Llvm.declare_function "bool_printer" fun_ty the_module in
     let v = (Llvm.params f).(0) in
     let entry_bb = Llvm.append_block context "entry" f in
@@ -104,6 +104,7 @@ let get_list_printer list_type =
 
     Llvm.position_at_end merge_bb builder;
     ignore (Llvm.build_ret_void builder);
+    Hashtbl.add list_printers list_type f;
     f
 
 (* Type -> lltyp *)

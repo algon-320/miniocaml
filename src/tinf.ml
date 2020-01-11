@@ -1,5 +1,5 @@
-open Exp;;
-open Type;;
+open Exp
+open Type
 
 let ext env x v =
   (x, v) :: env
@@ -299,20 +299,6 @@ let rename_typevar ty =
   in
   let (_, t, _) = impl [] ty 0 in
   t
-
-(* 型を文字列化 *)
-let rec pretty_format_type ty =
-  match ty with
-  | TInt -> Printf.sprintf "TInt"
-  | TBool -> Printf.sprintf "TBool"
-  | TUnit -> Printf.sprintf "TUnit"
-  | TVar(s) -> Printf.sprintf "%s" s
-  | TArrow(t1, t2) ->
-    let (s1, s2) = (pretty_format_type t1, pretty_format_type t2) in
-    Printf.sprintf "(%s -> %s)" s1 s2
-  | TList(t) ->
-    let s = pretty_format_type t in
-    Printf.sprintf "(%s) list" s
 
 let get_type e =
   let (_, t, _, _) = tinf [] e 0 in
