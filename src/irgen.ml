@@ -15,34 +15,6 @@ let byte_t = Llvm.i8_type context
 let byte_ptr_t = Llvm.pointer_type byte_t
 let bool_t = Llvm.i1_type context
 
-(* lltypeを要素に持つリストの型 *)
-let list_types:(Llvm.lltype, Llvm.lltype) Hashtbl.t = Hashtbl.create 10
-let get_list_type lltype =
-  try
-    Hashtbl.find list_types lltype
-  with Not_found ->
-    let t = Llvm.named_struct_type context ((Llvm.string_of_lltype lltype) ^ "_list_t") in
-    let () = Llvm.struct_set_body t [|lltype; Llvm.pointer_type t|] false in
-    Hashtbl.add list_types lltype t;
-    t
-
-(* Type -> lltyp *)
-let rec type_to_lltype = function
-  | Type.TInt -> int_t
-  | Type.TBool -> bool_t
-  | Type.TUnit -> void_t
-  | Type.TList(t) ->
-    (
-      let tt = type_to_lltype t in
-      match t with
-      | Type.TInt | Type.TBool -> get_list_type tt
-      | Type.TList _ -> get_list_type (Llvm.pointer_type tt)
-      | _ -> failwith "unimplemented"
-    )
-  | Type.TArrow(t1, t2) -> failwith "unimplemented"
-  | Type.TVar(name) -> failwith "unimplemented"
-let get_type e = type_to_lltype (Tinf.get_type e)
-
 let fmtstr_int =
   Llvm.define_global "fmtstr_int" (Llvm.const_string context "%lld\n\x00") the_module
 let fmtstr_true =
@@ -93,6 +65,63 @@ let bool_printer =
   Llvm.position_at_end merge_bb builder;
   ignore (Llvm.build_ret_void builder);
   f
+
+(* lltypeを要素に持つリストの型 *)
+let list_types:(Llvm.lltype, Llvm.lltype) Hashtbl.t = Hashtbl.create 10
+let get_list_type lltype =
+  try
+    Hashtbl.find list_types lltype
+  with Not_found ->
+    let t = Llvm.named_struct_type context ((Llvm.string_of_lltype lltype) ^ "_list_t") in
+    let () = Llvm.struct_set_body t [|lltype; Llvm.pointer_type t|] false in
+    Hashtbl.add list_types lltype t;
+    t
+let list_printers:(Llvm.lltype, Llvm.llvalue) Hashtbl.t = Hashtbl.create 10
+let get_list_printer list_type =
+  try
+    Hashtbl.find list_printers list_type
+  with Not_found ->
+    let fun_ty = Llvm.function_type void_t [|bool_t|] in
+    let f = Llvm.declare_function "bool_printer" fun_ty the_module in
+    let v = (Llvm.params f).(0) in
+    let entry_bb = Llvm.append_block context "entry" f in
+    let then_bb = Llvm.append_block context "then" f in
+    let else_bb = Llvm.append_block context "else" f in
+    let merge_bb = Llvm.append_block context "ifcont" f in
+
+    Llvm.position_at_end entry_bb builder;
+    ignore (Llvm.build_cond_br v then_bb else_bb builder);
+
+    Llvm.position_at_end then_bb builder;
+    let p = Llvm.build_pointercast fmtstr_true i8_ptr_t "fmtstr_true" builder in
+    ignore (Llvm.build_call printf [|p; v|] "" builder);
+    ignore (Llvm.build_br merge_bb builder);
+
+    Llvm.position_at_end else_bb builder;
+    let p = Llvm.build_pointercast fmtstr_false i8_ptr_t "fmtstr_false" builder in
+    ignore (Llvm.build_call printf [|p; v|] "" builder);
+    ignore (Llvm.build_br merge_bb builder);
+
+    Llvm.position_at_end merge_bb builder;
+    ignore (Llvm.build_ret_void builder);
+    f
+
+(* Type -> lltyp *)
+let rec type_to_lltype = function
+  | Type.TInt -> int_t
+  | Type.TBool -> bool_t
+  | Type.TUnit -> void_t
+  | Type.TList(t) ->
+    (
+      let tt = type_to_lltype t in
+      match t with
+      | Type.TInt | Type.TBool -> get_list_type tt
+      | Type.TList _ -> get_list_type (Llvm.pointer_type tt)
+      | _ -> failwith "unimplemented"
+    )
+  | Type.TArrow(t1, t2) -> failwith "unimplemented"
+  | Type.TVar(name) -> failwith "unimplemented"
+let get_type e = type_to_lltype (Tinf.get_type e)
 
 let rec gen_exp e = match e with
   | Exp.IntLit(n) -> Llvm.const_int int_t n
@@ -183,7 +212,7 @@ let rec gen_exp e = match e with
       match Tinf.get_type e with
       | Type.TInt -> Llvm.build_call int_printer [|v|] "" builder
       | Type.TBool -> Llvm.build_call bool_printer [|v|] "" builder
-      | Type.TList(t) -> failwith ""
+      | Type.TList _ -> Llvm.build_call (get_list_printer (get_type e)) [|v|] "" builder
       | _ -> failwith "Print: unimplemented"
     )
 
