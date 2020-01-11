@@ -151,13 +151,17 @@ let rec tinf te e n =
   | Let(x, e1, e2) ->
     tinf te (App(Fun(x, e2), e1)) n
   | LetRec(f, x, e1, e2) ->
-    let (tx, n1) = new_typevar n in
-    let (tf, n2) = new_typevar n1 in
-    let te1 = ext (ext te x tx) f tf in
-    let (te2, _, _, n3) = tinf te1 e1 n2 in
-    let (_, t3, theta2, n4) = tinf te2 e2 n3 in
-    let te4 = remove (remove te2 f) x in
-    (te4, t3, theta2, n4)
+    let (tx, n) = new_typevar n in
+    let (tf, n) = new_typevar n in
+    let te = ext (ext te x tx) f tf in
+    let (te, t1, theta1, n) = tinf te e1 n in
+    let tx2 = subst_ty theta1 tx in
+    let theta2 = unify [(tf, TArrow(tx2, t1))] in
+    let te = subst_tyenv theta2 te in
+    let (te, t2, theta3, n) = tinf te e2 n in
+    let te = remove (remove te f) x in
+    let theta123 = compose_subst theta3 @@ compose_subst theta2 theta1 in
+    (te, t2, theta123, n)
 
   | ListEmpty ->
     let (tx,n1) = new_typevar n in
