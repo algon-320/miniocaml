@@ -14,38 +14,71 @@ let i8_t = Llvm.i8_type context
 let int64_t = Llvm.i64_type context
 let bool_t = Llvm.i1_type context
 
+let rec typeid_string = function
+  | Type.TInt -> "int"
+  | Type.TBool -> "bool"
+  | Type.TList(ct) -> (typeid_string ct) ^ "_list"
+  | _ -> failwith "name: unimplemented"
+
 (* lltypeを要素に持つリストの型 *)
-let list_types : (Llvm.lltype, Llvm.lltype) Hashtbl.t = Hashtbl.create 10
-let get_list_type lltype =
+let list_types : (Type.ty, Llvm.lltype) Hashtbl.t = Hashtbl.create 10
+let rec get_list_type content_ty =
   try
-    Hashtbl.find list_types lltype
+    Hashtbl.find list_types content_ty
   with Not_found ->
-    let t = Llvm.named_struct_type context ((Llvm.string_of_lltype lltype) ^ "_list_t") in
-    let () = Llvm.struct_set_body t [|lltype; Llvm.pointer_type t|] false in
-    Hashtbl.add list_types lltype t;
+    let content_llty = type_to_lltype content_ty in
+    let t = Llvm.named_struct_type context ((typeid_string content_ty) ^ "_list_t") in
+    let field =
+      if Type.is_atomic content_ty then
+        content_llty
+      else
+        ptr content_llty in
+    let () = Llvm.struct_set_body t [|field; ptr t|] false in
+    Hashtbl.add list_types content_ty t;
     t
+
+and type_to_lltype = function
+  | Type.TInt -> int64_t
+  | Type.TBool -> bool_t
+  | Type.TUnit -> void_t
+  | Type.TList(t) -> get_list_type t
+  | Type.TArrow(t1, t2) -> failwith "unimplemented"
+  | Type.TVar(name) -> failwith "unimplemented"
 
 let fmtstr_int =
   Llvm.define_global "fmtstr_int"
-    (Llvm.const_string context "%lld\n\x00") the_module
+    (Llvm.const_string context "%lld\x00") the_module
 let fmtstr_true =
   Llvm.define_global "fmtstr_true"
-    (Llvm.const_string context "true\n\x00") the_module
+    (Llvm.const_string context "true\x00") the_module
 let fmtstr_false =
   Llvm.define_global "fmtstr_false"
-    (Llvm.const_string context "false\n\x00") the_module
-let build_global_string_ptr gs b =
-  Llvm.build_pointercast gs (ptr i8_t) "tmp_gs_ptr" b
+    (Llvm.const_string context "false\x00") the_module
+let fmtstr_lbracket =
+  Llvm.define_global "fmtstr_lbracket"
+    (Llvm.const_string context "[\x00") the_module
+let fmtstr_rbracket =
+  Llvm.define_global "fmtstr_rbracket"
+    (Llvm.const_string context "]\x00") the_module
+let fmtstr_semicolon =
+  Llvm.define_global "fmtstr_semicolon"
+    (Llvm.const_string context "; \x00") the_module
+let fmtstr_newline =
+  Llvm.define_global "fmtstr_newline"
+    (Llvm.const_string context "\n\x00") the_module
+let build_global_string_ptr gs =
+  Llvm.build_pointercast gs (ptr i8_t) "tmp_gs_ptr" builder
 
 let printf =
   let printf_type = Llvm.var_arg_function_type void_t [|(ptr i8_t)|] in
   Llvm.declare_function "printf" printf_type the_module
 
 let printers : (Type.ty, Llvm.llvalue) Hashtbl.t = Hashtbl.create 10
-let get_printer t =
+let rec get_printer t =
   try
     Hashtbl.find printers t
   with Not_found ->
+    let prev_bb = Llvm.insertion_block builder in
     let f =
       match t with
       | Type.TInt -> (
@@ -54,7 +87,7 @@ let get_printer t =
           let v = (Llvm.params f).(0) in
           let entry_bb = Llvm.append_block context "entry" f in
           let _ = Llvm.position_at_end entry_bb builder;
-            let p = build_global_string_ptr fmtstr_int builder in
+            let p = build_global_string_ptr fmtstr_int in
             ignore (Llvm.build_call printf [|p; v|] "" builder);
             ignore (Llvm.build_ret_void builder) in
           f
@@ -70,39 +103,66 @@ let get_printer t =
           let _ = Llvm.position_at_end entry_bb builder;
             ignore (Llvm.build_cond_br v then_bb else_bb builder) in
           let _ = Llvm.position_at_end then_bb builder;
-            let p = build_global_string_ptr fmtstr_true builder in
+            let p = build_global_string_ptr fmtstr_true in
             ignore (Llvm.build_call printf [|p; v|] "" builder);
             ignore (Llvm.build_br merge_bb builder) in
           let _ = Llvm.position_at_end else_bb builder;
-            let p = build_global_string_ptr fmtstr_false builder in
+            let p = build_global_string_ptr fmtstr_false in
             ignore (Llvm.build_call printf [|p; v|] "" builder);
             ignore (Llvm.build_br merge_bb builder) in
           let _ = Llvm.position_at_end merge_bb builder;
             ignore (Llvm.build_ret_void builder) in
           f
         )
-      | Type.TList(t) -> failwith "list printer unimplemented"
+      | Type.TList(ct) -> (
+          let list_t = type_to_lltype t in
+          let name = typeid_string t in
+          let fun_ty = Llvm.function_type void_t [|ptr list_t|] in
+          let inner =
+            let f = Llvm.declare_function (name ^ "inner_printer") fun_ty the_module in
+            let v = (Llvm.params f).(0) in
+            let entry_bb = Llvm.append_block context "entry" f in
+            let ifnull_bb = Llvm.append_block context "ifnull" f in
+            let else_bb = Llvm.append_block context "else" f in
+            let _ = Llvm.position_at_end entry_bb builder;
+              let cond = Llvm.build_is_null v "is_null_cond" builder in
+              ignore (Llvm.build_cond_br cond ifnull_bb else_bb builder) in
+            let _ = Llvm.position_at_end ifnull_bb builder;
+              ignore (Llvm.build_ret_void builder) in
+            let _ = Llvm.position_at_end else_bb builder;
+              let head_p = Llvm.build_struct_gep v 0 "head_p" builder in
+              let head_v = Llvm.build_load head_p "head_v" builder in
+              let tail_p = Llvm.build_struct_gep v 1 "tail_p" builder in
+              let tail_v = Llvm.build_load tail_p "tail_v" builder in
+              let printer = get_printer ct in
+              (* print head *)
+              ignore (Llvm.build_call printer [|head_v|] "" builder);
+              (* print ';' *)
+              let comma = build_global_string_ptr fmtstr_semicolon in
+              ignore (Llvm.build_call printf [|comma|] "" builder);
+              (* print tail *)
+              ignore (Llvm.build_call f [|tail_v|] "" builder);
+              ignore (Llvm.build_ret_void builder) in
+            f in
+          let wrapper =
+            let f = Llvm.declare_function (name ^ "wrapper_printer") fun_ty the_module in
+            let v = (Llvm.params f).(0) in
+            let entry_bb = Llvm.append_block context "entry" f in
+            let _ = Llvm.position_at_end entry_bb builder;
+              let lbracket = build_global_string_ptr fmtstr_lbracket in
+              ignore (Llvm.build_call printf [|lbracket|] "" builder);
+              ignore (Llvm.build_call inner [|v|] "" builder);
+              let rbracket = build_global_string_ptr fmtstr_rbracket in
+              ignore (Llvm.build_call printf [|rbracket|] "" builder);
+              ignore (Llvm.build_ret_void builder) in
+            f in
+          wrapper
+        )
       | _ -> failwith "unimplemented"
     in
     Hashtbl.add printers t f;
+    Llvm.position_at_end prev_bb builder;
     f
-
-(* Type -> lltyp *)
-let rec type_to_lltype = function
-  | Type.TInt -> int64_t
-  | Type.TBool -> bool_t
-  | Type.TUnit -> void_t
-  | Type.TList(t) ->
-    (
-      let tt = type_to_lltype t in
-      match t with
-      | Type.TInt | Type.TBool -> get_list_type tt
-      | Type.TList _ -> get_list_type (Llvm.pointer_type tt)
-      | _ -> failwith "unimplemented"
-    )
-  | Type.TArrow(t1, t2) -> failwith "unimplemented"
-  | Type.TVar(name) -> failwith "unimplemented"
-let get_type e = type_to_lltype (Tinf.get_type e)
 
 let rec gen_exp e = match e with
   | Exp.IntLit(n) -> Llvm.const_int int64_t n
@@ -164,12 +224,12 @@ let rec gen_exp e = match e with
     )
   | Exp.ListEmpty -> Llvm.const_null @@ ptr i8_t
   | Exp.ListCons(head, tail) ->
-    let list_t = get_type e in
+    let list_t = type_to_lltype (Tinf.get_type e) in
     let head_v = gen_exp head in
     let tail_v =
       let p = gen_exp tail in
       match tail with
-      | Exp.ListEmpty -> Llvm.build_pointercast p (Llvm.pointer_type list_t) "tail_v" builder
+      | Exp.ListEmpty -> Llvm.build_pointercast p (ptr list_t) "tail_v" builder
       | _ -> p in
     let cons_p = Llvm.build_alloca list_t "cons_p" builder in
     let head_p = Llvm.build_struct_gep cons_p 0 "cons_head_p" builder in
@@ -192,6 +252,8 @@ let rec gen_exp e = match e with
     let printer = get_printer @@ Tinf.get_type e in
     Llvm.position_at_end current_bb builder;
     ignore (Llvm.build_call printer [|gen_exp e|] "" builder);
+    let newline = build_global_string_ptr fmtstr_newline in
+    ignore (Llvm.build_call printf [|newline|] "" builder);
     Llvm.const_null int64_t
 
   | _ -> failwith "gen_exp: unimplemented"

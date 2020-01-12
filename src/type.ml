@@ -9,6 +9,10 @@ type ty =
 type tyenv = (string * ty) list
 type tysubst = (tyvar * ty) list
 
+let is_atomic = function
+  | TInt | TBool | TUnit -> true
+  | _ -> false
+
 (* 型を文字列化 *)
 let rec string_of_type ty =
   match ty with
