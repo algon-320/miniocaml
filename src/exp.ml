@@ -73,11 +73,11 @@ let rec string_of_exp e =
     | Match(e, _) -> Printf.sprintf "match %s with (.. omitted)" (string_of_exp e)
 
     | ListEmpty -> Printf.sprintf "[]"
-    | ListCons(h, t) -> Printf.sprintf "%s::%s" (string_of_exp h) (string_of_exp t)
-    | ListHead(l) -> Printf.sprintf "ListHead(%s)" (string_of_exp l)
-    | ListTail(l) -> Printf.sprintf "ListTail(%s)" (string_of_exp l)
+    | ListCons(h, t) -> Printf.sprintf "(%s::%s)" (string_of_exp h) (string_of_exp t)
+    | ListHead(l) -> Printf.sprintf "ListHead %s" (string_of_exp l)
+    | ListTail(l) -> Printf.sprintf "ListTail %s" (string_of_exp l)
 
-    | Skip(e1, e2) -> Printf.sprintf "%s; %s" (string_of_exp e1) (string_of_exp e2)
+    | Skip(e1, e2) -> Printf.sprintf "(%s; %s)" (string_of_exp e1) (string_of_exp e2)
     | Print(e) -> Printf.sprintf "Print %s" (string_of_exp e)
 
     | CallCC(e) -> Printf.sprintf "CallCC(%s)" (string_of_exp e)
