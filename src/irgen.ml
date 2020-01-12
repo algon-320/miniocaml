@@ -169,29 +169,21 @@ let rec gen_exp e = match e with
   | Exp.BoolLit(b) -> Llvm.const_int bool_t (int_of_bool b)
   | Exp.UnitLit -> Llvm.const_null int64_t
   | Exp.Add(e1, e2) ->
-    let (lhs, rhs) = (gen_exp e1, gen_exp e2) in
-    Llvm.build_add lhs rhs "add" builder
+    Llvm.build_add (gen_exp e1) (gen_exp e2) "add" builder
   | Exp.Sub(e1, e2) ->
-    let (lhs, rhs) = (gen_exp e1, gen_exp e2) in
-    Llvm.build_sub lhs rhs "sub" builder
+    Llvm.build_sub (gen_exp e1) (gen_exp e2) "sub" builder
   | Exp.Mul(e1, e2) ->
-    let (lhs, rhs) = (gen_exp e1, gen_exp e2) in
-    Llvm.build_mul lhs rhs "mul" builder
+    Llvm.build_mul (gen_exp e1) (gen_exp e2) "mul" builder
   | Exp.Div(e1, e2) ->
-    let (lhs, rhs) = (gen_exp e1, gen_exp e2) in
-    Llvm.build_sdiv lhs rhs "sdiv" builder
+    Llvm.build_sdiv (gen_exp e1) (gen_exp e2) "sdiv" builder
   | Exp.Eq(e1, e2) ->
-    let (lhs, rhs) = (gen_exp e1, gen_exp e2) in
-    Llvm.build_icmp Llvm.Icmp.Eq lhs rhs "eq" builder
+    Llvm.build_icmp Llvm.Icmp.Eq (gen_exp e1) (gen_exp e2) "eq" builder
   | Exp.Ne(e1, e2) ->
-    let (lhs, rhs) = (gen_exp e1, gen_exp e2) in
-    Llvm.build_icmp Llvm.Icmp.Ne lhs rhs "ne" builder
+    Llvm.build_icmp Llvm.Icmp.Ne (gen_exp e1) (gen_exp e2) "ne" builder
   | Exp.Gt(e1, e2) ->
-    let (lhs, rhs) = (gen_exp e1, gen_exp e2) in
-    Llvm.build_icmp Llvm.Icmp.Sgt lhs rhs "gt" builder
+    Llvm.build_icmp Llvm.Icmp.Sgt (gen_exp e1) (gen_exp e2) "gt" builder
   | Exp.Lt(e1, e2) ->
-    let (lhs, rhs) = (gen_exp e1, gen_exp e2) in
-    Llvm.build_icmp Llvm.Icmp.Slt lhs rhs "lt" builder
+    Llvm.build_icmp Llvm.Icmp.Slt (gen_exp e1) (gen_exp e2) "lt" builder
   | Exp.If(cond, e1, e2) ->
     let cond = gen_exp cond in
     let start_bb = Llvm.insertion_block builder in
