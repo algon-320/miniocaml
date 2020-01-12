@@ -186,39 +186,44 @@ let rec tinf te e n =
 
   | Match(e1, arms) ->
     (
-      let (te1, t1, theta1, n1) = tinf te e1 n in
+      let (te, t1, theta1, n) = tinf te e1 n in
       match arms with
       | [] -> failwith "Match: at least one matching arm required."
       | _ ->
         let rec tinf_arms te arms n =
           match arms with
           | [] ->
-            let (tx1, n1) = new_typevar n in
-            let (tx2, n2) = new_typevar n1 in
-            (te, (tx1, tx2), theta0, n2)
+            let (tx1, n) = new_typevar n in
+            let (tx2, n) = new_typevar n in
+            te, (tx1, tx2), theta0, n
           | (p, e)::t ->
-            let (te2, (t2, t3), theta2, n2) = tinf_pat_arm te (p, e) n in
-            let (te3, (t4, t5), theta3, n3) = tinf_arms te2 t n2 in
-            let (t2, t3) = (subst_ty theta3 t2, subst_ty theta3 t3) in
-            let theta4 = unify [(t2, t4); (t3, t5)] in
-            let (t2, t3) = (subst_ty theta4 t2, subst_ty theta4 t3) in
-            let te4 = subst_tyenv theta4 te3 in
+            let (te, (t_p, t_e), theta2, n) = tinf_pat_arm te (p, e) n in
+            let (te, (t_pt, t_et), theta3, n3) = tinf_arms te t n in
+            let t_p = subst_ty theta3 t_p in
+            let t_e = subst_ty theta3 t_e in
+            let theta4 = unify [(t_p, t_pt); (t_e, t_et)] in
+            let t_p = subst_ty theta4 t_p in
+            let t_e = subst_ty theta4 t_e in
+            let te = subst_tyenv theta4 te in
             let theta5 = compose_subst (compose_subst theta4 theta3) (compose_subst theta2 theta1) in
-            (te4, (t2, t3), theta5, n3)
+            (te, (t_p, t_e), theta5, n)
         in
-        let (te2, (t2, t3), theta2, n2) = tinf_arms te1 arms n1 in
+        let (te, (t_pat, t_res), theta2, n) = tinf_arms te arms n in
         let t1 = subst_ty theta2 t1 in
-        let theta3 = unify [(t1, t2)] in
-        let te3 = subst_tyenv theta3 te2 in
-        let theta4 = compose_subst theta3 (compose_subst theta2 theta1) in
-        (te3, t3, theta4, n2)
+        let theta3 = unify [(t1, t_pat)] in
+        let te = subst_tyenv theta3 te in
+        let t_res = subst_ty theta3 t_res in
+        let theta4 = compose_subst theta3 @@ compose_subst theta2 theta1 in
+        (te, t_res, theta4, n)
     )
 
   | Skip(e1, e2) ->
     let (te1, (_, t2), theta1, n1) = tinf_inorder2 te (e1, e2) n in
     (te1, t2, theta1, n1)
 
-  | Print(_) -> (te, TUnit, theta0, n)
+  | Print(e) ->
+    let (te, _, theta1, n) = tinf te e n in
+    (te, TUnit, theta1, n)
 
   | CallCC(c) ->
     (* c: ('a -> 'a) -> 'a,  CallCC(c): 'a *)
@@ -257,18 +262,19 @@ and tinf_pat_arm te (pat, e) n =
     (te3, (TList(t1), t2), theta4, n2)
 
 and tinf_inorder2 te (e1, e2) n =
-  let (te1, t1, theta1, n1) = tinf te e1 n in
-  let (te2, t2, theta2, n2) = tinf te1 e2 n1 in
+  let (te, t1, theta1, n) = tinf te e1 n in
+  let (te, t2, theta2, n) = tinf te e2 n in
   let t1 = subst_ty theta2 t1 in
+  let t2 = subst_ty theta1 t2 in
   let theta3 = compose_subst theta2 theta1 in
-  (te2, (t1, t2), theta3, n2)
+  (te, (t1, t2), theta3, n)
 and tinf_inorder3 te (e1, e2, e3) n =
-  let (te1, t1, theta1, n1) = tinf te e1 n in
-  let (te2, t2, theta2, n2) = tinf te1 e2 n1 in
-  let (te3, t3, theta3, n3) = tinf te2 e3 n2 in
-  let (t1, t2) = (subst_ty theta3 t1, subst_ty theta3 t2) in
+  let (te, t1, theta1, n) = tinf te e1 n in
+  let (te, t2, theta2, n) = tinf te e2 n in
+  let (te, t3, theta3, n) = tinf te e3 n in
   let theta4 = compose_subst theta3 (compose_subst theta2 theta1) in
-  (te3, (t1, t2, t3), theta4, n3)
+  let (t1, t2) = (subst_ty theta4 t1, subst_ty theta4 t2) in
+  (te, (t1, t2, t3), theta4, n)
 
 
 (* 型変数を 'a -> 'b -> ... のように振り直す *)
