@@ -198,7 +198,7 @@ let rec tinf te e n =
             te, (tx1, tx2), theta0, n
           | (p, e)::t ->
             let (te, (t_p, t_e), theta2, n) = tinf_pat_arm te (p, e) n in
-            let (te, (t_pt, t_et), theta3, n3) = tinf_arms te t n in
+            let (te, (t_pt, t_et), theta3, n) = tinf_arms te t n in
             let t_p = subst_ty theta3 t_p in
             let t_e = subst_ty theta3 t_e in
             let theta4 = unify [(t_p, t_pt); (t_e, t_et)] in
