@@ -120,7 +120,7 @@ let rec get_printer t =
           let name = typeid_string t in
           let fun_ty = Llvm.function_type void_t [|ptr list_t|] in
           let inner =
-            let f = Llvm.declare_function (name ^ "inner_printer") fun_ty the_module in
+            let f = Llvm.declare_function (name ^ "_inner_printer") fun_ty the_module in
             let v = (Llvm.params f).(0) in
             let entry_bb = Llvm.append_block context "entry" f in
             let ifnull_bb = Llvm.append_block context "ifnull" f in
@@ -146,7 +146,7 @@ let rec get_printer t =
               ignore (Llvm.build_ret_void builder) in
             f in
           let wrapper =
-            let f = Llvm.declare_function (name ^ "wrapper_printer") fun_ty the_module in
+            let f = Llvm.declare_function (name ^ "_wrapper_printer") fun_ty the_module in
             let v = (Llvm.params f).(0) in
             let entry_bb = Llvm.append_block context "entry" f in
             let _ = Llvm.position_at_end entry_bb builder;
