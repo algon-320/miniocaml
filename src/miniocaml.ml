@@ -61,7 +61,7 @@ let compile code_str executable_filename =
     (* emit assembly *)
     Llvm_target.TargetMachine.emit_to_file Irgen.the_module Llvm_target.CodeGenFileType.AssemblyFile asm_tmp target_machine;
     (* generate executable using `clang` *)
-    ignore (Sys.command @@ Printf.sprintf "clang %s -o %s" asm_tmp executable_filename);
+    ignore (Sys.command @@ Printf.sprintf "clang %s -lgc -o %s" asm_tmp executable_filename);
     (* remove assembly file *)
     ignore (Sys.command @@ Printf.sprintf "rm %s" asm_tmp)
   with Failure e ->

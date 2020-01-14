@@ -165,6 +165,23 @@ let rec get_printer t =
     Llvm.position_at_end prev_bb builder;
     f
 
+(* Boehm GC *)
+let gcinit =
+  let gcinit_type = Llvm.function_type void_t [||] in
+  let f = Llvm.declare_function "GC_init" gcinit_type the_module in
+  Llvm.set_linkage Llvm.Linkage.Dllimport f;
+  f
+let gcmalloc =
+  let gcmalloc_type = Llvm.function_type (ptr i8_t) [|Llvm.i64_type context|] in
+  let f = Llvm.declare_function "GC_malloc" gcmalloc_type the_module in
+  Llvm.set_linkage Llvm.Linkage.Dllimport f;
+  f
+let build_gcmalloc size ret_type name builder =
+  let p = Llvm.build_call gcmalloc [|size|] (name ^ "_tmp") builder in
+  Llvm.build_pointercast p ret_type name builder
+let build_gcmalloc_obj ty name builder =
+  build_gcmalloc (Llvm.size_of ty) (ptr ty) name builder
+
 let rec gen_exp e = match e with
   | Exp.IntLit(n) -> Llvm.const_int int64_t n
   | Exp.BoolLit(b) -> Llvm.const_int bool_t (int_of_bool b)
@@ -296,6 +313,7 @@ let gen_main e mpm =
   let entry_bb = Llvm.append_block context "entry" the_function in
   Llvm.position_at_end entry_bb builder;
   try
+    ignore (Llvm.build_call gcinit [||] "" builder);
     let v = gen_exp e in
     if Llvm.type_of v = int64_t then
       let ret = Llvm.build_trunc v int32_t "tmp" builder in
