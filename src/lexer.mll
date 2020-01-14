@@ -25,6 +25,7 @@ rule token = parse
   | '>'        { GREATER }
   | ';'        { SEMICOL }
   | "::"       { COLCOL }
+  | ";;"       { SEMICOLCOL }
 
   (* 括弧類 *)
   | '('        { LPAREN }

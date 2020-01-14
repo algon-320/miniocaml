@@ -27,6 +27,7 @@ open Exp
 %token VBAR     // '|'
 %token SEMICOL  // ';'
 %token COLCOL   // '::'
+%token SEMICOLCOL   // ';;'
 
 // キーワード
 %token TRUE     // "true"
@@ -64,13 +65,16 @@ open Exp
 %left VAR INT TRUE FALSE LPAREN LBRACKET
 
 %start main
-%type <Exp.exp> main
+%type <Exp.exp option> main
 
 %%
 
 // 開始記号
 main:
-  | exp EOF { $1 }
+  | exp EOF { Some ($1) }
+  | exp SEMICOLCOL { Some ($1) }
+  | EOF { print_newline (); exit 0 } // exit with 0
+  | SEMICOLCOL { None }
 ;
 
 // リストリテラル

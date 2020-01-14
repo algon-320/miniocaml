@@ -1,6 +1,8 @@
 let parse str = 
-  Parser.main Lexer.token 
-    (Lexing.from_string str)
+  let res = Parser.main Lexer.token (Lexing.from_string str) in
+  match res with
+  | Some ast -> ast
+  | None -> failwith "empty"
 
 let eval str =
   Eval.eval (parse str) (Eval.emptyenv ()) Eval.ident_cont
