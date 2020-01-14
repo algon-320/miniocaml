@@ -11,6 +11,7 @@ let int_of_bool b = if b then 1 else 0
 (* types *)
 let void_t = Llvm.void_type context
 let i8_t = Llvm.i8_type context
+let int32_t = Llvm.i32_type context
 let int64_t = Llvm.i64_type context
 let bool_t = Llvm.i1_type context
 
@@ -285,3 +286,26 @@ let gen_toplevel e fpm =
   let code = gen_function name [||] void_t (Exp.Skip(e, Exp.UnitLit)) fpm in
   toplevel_count := !toplevel_count + 1;
   code
+
+let gen_main e mpm =
+  let fun_ty = Llvm.function_type int32_t [||] in
+  let the_function = match Llvm.lookup_function "main" the_module with
+    | None -> Llvm.declare_function "main" fun_ty the_module
+    | Some _ -> failwith "the function has already been decleared"
+  in
+  let entry_bb = Llvm.append_block context "entry" the_function in
+  Llvm.position_at_end entry_bb builder;
+  try
+    let v = gen_exp e in
+    if Llvm.type_of v = int64_t then
+      let ret = Llvm.build_trunc v int32_t "tmp" builder in
+      ignore (Llvm.build_ret ret builder)
+    else
+      ignore (Llvm.build_ret (Llvm.const_int int32_t 0) builder)
+    ;
+    Llvm_analysis.assert_valid_function the_function;
+    ignore (Llvm.PassManager.run_module the_module mpm);
+    the_function
+  with e ->
+    Llvm.delete_function the_function;
+    raise e
