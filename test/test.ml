@@ -1,6 +1,6 @@
-open Main__Exp
-open Main__Value
-open Main__Type
+open Exp
+open Value
+open Type
 
 let all_passed = ref true
 
@@ -13,11 +13,11 @@ let assert_eq line actual expected printer =
     all_passed := false
 
 let assert_exp_eq line actual expected =
-  assert_eq line actual expected Main__Exp.string_of_exp
+  assert_eq line actual expected Exp.string_of_exp
 let assert_value_eq line actual expected =
-  assert_eq line actual expected Main__Value.string_of_value
+  assert_eq line actual expected Value.string_of_value
 let assert_type_eq line actual expected =
-  assert_eq line actual expected Main__Type.string_of_type
+  assert_eq line actual expected Type.string_of_type
 
 let test line str exp value ty =
   let act_exp = Main.parse str in
