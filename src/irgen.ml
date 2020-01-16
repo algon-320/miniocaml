@@ -21,7 +21,7 @@ let rec typeid_string = function
   | Type.TList(ct) -> (typeid_string ct) ^ "_list"
   | _ -> failwith "name: unimplemented"
 
-(* lltypeを要素に持つリストの型 *)
+(* content_tyを要素に持つリストの型 *)
 let list_types : (Type.ty, Llvm.lltype) Hashtbl.t = Hashtbl.create 10
 let rec get_list_type content_ty =
   try
@@ -43,8 +43,8 @@ and type_to_lltype = function
   | Type.TBool -> bool_t
   | Type.TUnit -> void_t
   | Type.TList(t) -> get_list_type t
-  | Type.TArrow(t1, t2) -> failwith "unimplemented"
-  | Type.TVar(name) -> failwith "unimplemented"
+  | Type.TArrow(t1, t2) -> failwith "type_to_lltype: unimplemented"
+  | Type.TVar(name) -> failwith "type_to_lltype: unimplemented"
 
 let fmtstr_int =
   Llvm.define_global "fmtstr_int"
@@ -159,7 +159,7 @@ let rec get_printer t =
             f in
           wrapper
         )
-      | _ -> failwith "unimplemented"
+      | _ -> failwith "get_printer: unimplemented"
     in
     Hashtbl.add printers t f;
     Llvm.position_at_end prev_bb builder;
