@@ -179,6 +179,12 @@ let build_gcmalloc_obj ty name builder =
   build_gcmalloc (Llvm.size_of ty) (ptr ty) name builder
 
 let rec gen_exp e = match e with
+  | Exp.Var(name) -> (
+      try
+        Hashtbl.find named_values name
+      with Not_found ->
+        failwith @@ Printf.sprintf "unbound value: %s" name
+    )
   | Exp.IntLit(n) -> Llvm.const_int int64_t n
   | Exp.BoolLit(b) -> Llvm.const_int bool_t (int_of_bool b)
   | Exp.UnitLit -> Llvm.const_null int64_t
@@ -262,6 +268,15 @@ let rec gen_exp e = match e with
     ignore (Llvm.build_call printf [|newline|] "" builder);
     Llvm.const_null int64_t
 
+  | Exp.Let(name, e1, e2) -> (
+      let v1 = gen_exp e1 in
+      let v1p = build_gcmalloc_obj (type_to_lltype @@ Tinf.get_type e1) "v1" builder in
+      ignore (Llvm.build_store v1 v1p builder);
+      Hashtbl.add named_values name v1p;
+      let v2 = gen_exp e2 in
+      Hashtbl.remove named_values name;
+      v2
+    )
   | _ -> failwith "gen_exp: unimplemented"
 
 and gen_function fun_name args ret_type body fpm =
