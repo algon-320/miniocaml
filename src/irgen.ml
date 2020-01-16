@@ -168,14 +168,10 @@ let rec get_printer t =
 (* Boehm GC *)
 let gcinit =
   let gcinit_type = Llvm.function_type void_t [||] in
-  let f = Llvm.declare_function "GC_init" gcinit_type the_module in
-  Llvm.set_linkage Llvm.Linkage.Dllimport f;
-  f
+  Llvm.declare_function "GC_init" gcinit_type the_module
 let gcmalloc =
   let gcmalloc_type = Llvm.function_type (ptr i8_t) [|Llvm.i64_type context|] in
-  let f = Llvm.declare_function "GC_malloc" gcmalloc_type the_module in
-  Llvm.set_linkage Llvm.Linkage.Dllimport f;
-  f
+  Llvm.declare_function "GC_malloc" gcmalloc_type the_module
 let build_gcmalloc size ret_type name builder =
   let p = Llvm.build_call gcmalloc [|size|] (name ^ "_tmp") builder in
   Llvm.build_pointercast p ret_type name builder
