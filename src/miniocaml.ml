@@ -3,10 +3,12 @@
 let usage = "Mini-OCaml compiler / interpreter
 
 Usage:
-    miniocaml [options...] souce-file    # as compiler
-    miniocaml [options...]               # as interpreter
+    miniocaml [repl-options...]                  # as interpreter
+    miniocaml [compile-options...] souce-file    # as compiler
 
-Options:
+repl-options:
+    --help, -h        print this help to stderr.
+compile-options:
     --help, -h        print this help to stderr.
     -o 'executable'   specify name of the executable. (default: 'a.out')
 
