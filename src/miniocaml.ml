@@ -46,6 +46,10 @@ let compile code_str executable_filename =
       | None ->
         Exp.UnitLit
     in
+
+    (* Exp.ExpHash.iter (fun k v -> Printf.printf "[%s] => [%s]\n" (Exp.string_of_exp k) (Type.string_of_type v)) Tinf.type_info;
+       flush stdout; *)
+
     let triple = Llvm_target.Target.default_triple () in
     let target = Llvm_target.Target.by_triple triple in
     let reloc = Llvm_target.RelocMode.PIC in

@@ -46,6 +46,8 @@ and type_to_lltype = function
   | Type.TArrow(t1, t2) -> failwith "type_to_lltype: unimplemented"
   | Type.TVar(name) -> failwith "type_to_lltype: unimplemented"
 
+let ast_type e = Exp.ExpHash.find Tinf.type_info e
+
 let global_constants : (Llvm.llvalue, Llvm.llvalue) Hashtbl.t = Hashtbl.create 256
 let get_global_constant const =
   try
@@ -169,8 +171,11 @@ let build_gcmalloc_obj ty name builder =
 let rec gen_exp e = match e with
   | Exp.Var(name) -> (
       try
-        let p = Hashtbl.find named_values name in
-        Llvm.build_load p "var" builder
+        let v = Hashtbl.find named_values name in
+        if Type.is_atomic @@ ast_type e then
+          Llvm.build_load v "var" builder
+        else
+          v
       with Not_found ->
         failwith @@ Printf.sprintf "unbound value: %s" name
     )
@@ -216,7 +221,7 @@ let rec gen_exp e = match e with
 
     Llvm.position_at_end merge_bb builder;
     (
-      match Hashtbl.find Tinf.type_info e with
+      match ast_type e with
       | Type.TUnit ->
         Llvm.const_null int64_t
       | _ ->
@@ -225,14 +230,14 @@ let rec gen_exp e = match e with
     )
   | Exp.ListEmpty -> Llvm.const_null @@ ptr i8_t
   | Exp.ListCons(head, tail) ->
-    let list_t = type_to_lltype @@ Hashtbl.find Tinf.type_info e in
+    let list_t = type_to_lltype @@ ast_type e in
     let head_v = gen_exp head in
     let tail_v =
       let p = gen_exp tail in
       match tail with
       | Exp.ListEmpty -> Llvm.build_pointercast p (ptr list_t) "tail_v" builder
       | _ -> p in
-    let cons_p = Llvm.build_alloca list_t "cons_p" builder in
+    let cons_p = build_gcmalloc_obj list_t "cons_p" builder in
     let head_p = Llvm.build_struct_gep cons_p 0 "cons_head_p" builder in
     let tail_p = Llvm.build_struct_gep cons_p 1 "cons_tail_p" builder in
     ignore (Llvm.build_store head_v head_p builder);
@@ -250,7 +255,7 @@ let rec gen_exp e = match e with
   | Exp.Skip(e1, e2) -> ignore (gen_exp e1); gen_exp e2
   | Exp.Print(e) ->
     let current_bb = Llvm.insertion_block builder in
-    let printer = get_printer @@ Hashtbl.find Tinf.type_info e in
+    let printer = get_printer @@ ast_type e in
     Llvm.position_at_end current_bb builder;
     ignore (Llvm.build_call printer [|gen_exp e|] "" builder);
     let newline = get_global_constant_string "\n" in
@@ -259,9 +264,13 @@ let rec gen_exp e = match e with
 
   | Exp.Let(name, e1, e2) -> (
       let v1 = gen_exp e1 in
-      let v1p = build_gcmalloc_obj (type_to_lltype @@ Hashtbl.find Tinf.type_info e1) "v1" builder in
-      ignore (Llvm.build_store v1 v1p builder);
-      Hashtbl.add named_values name v1p;
+      let v =
+        if Type.is_atomic @@ ast_type e1 then
+          let p = build_gcmalloc_obj (type_to_lltype @@ ast_type e1) "p" builder in
+          ignore (Llvm.build_store v1 p builder);
+          p
+        else v1 in
+      Hashtbl.add named_values name v;
       let v2 = gen_exp e2 in
       Hashtbl.remove named_values name;
       v2

@@ -96,3 +96,9 @@ let rec string_of_exp e =
     else
       s
   in string_of_exp_impl e 0
+
+module ExpHash = Hashtbl.Make(struct
+    type t = exp
+    let equal = (==) (* physical comparison *)
+    let hash = Hashtbl.hash
+  end)

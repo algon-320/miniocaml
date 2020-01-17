@@ -90,12 +90,12 @@ let new_typevar n =
   (TVar ("'a" ^ (string_of_int n)), n+1)
 
 (* ASTのノード→型 *)
-let type_info : (Exp.exp, Type.ty) Hashtbl.t = Hashtbl.create 256
+let type_info : Type.ty Exp.ExpHash.t = Exp.ExpHash.create 256
 
 let update_type_info theta =
-  Hashtbl.iter (fun k v ->
+  Exp.ExpHash.iter (fun k v ->
       let final_ty = subst_ty theta v in
-      Hashtbl.replace type_info k final_ty
+      Exp.ExpHash.replace type_info k final_ty
     ) type_info
 
 (* tinf : tyenv -> exp -> int -> tyenv * ty * tysubst * int *)
@@ -250,7 +250,7 @@ let rec tinf te e n =
     | OpEq | OpNe | OpGt | OpLt ->
       (te, TArrow(TInt, TArrow(TInt, TBool)), theta0, n)
   ) in
-  let (_, t, th, _) = result in Hashtbl.add type_info e (subst_ty th t);
+  let (_, t, th, _) = result in Exp.ExpHash.add type_info e (subst_ty th t);
   result
 
 and tinf_pat_arm te (pat, e) n =
