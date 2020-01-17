@@ -61,8 +61,9 @@ let compile code_str executable_filename =
     Llvm_scalar_opts.add_gvn mpm;
     Llvm_scalar_opts.add_cfg_simplification mpm;
 
-    ignore (Irgen.gen_main ast mpm);
+    ignore (Irgen.gen_main ast);
     Llvm_analysis.assert_valid_module Irgen.the_module;
+    ignore (Llvm.PassManager.run_module Irgen.the_module mpm);
 
     Random.self_init ();
     let asm_tmp = Printf.sprintf "tmp%d.s" (Random.int 1000000000) in

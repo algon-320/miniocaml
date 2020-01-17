@@ -27,25 +27,25 @@ let fpm =
   ignore (Llvm.PassManager.initialize fpm);
   fpm
 
-let irgen str =
-  let ast = parse str in
-  let _ = Tinf.tinf [] ast 0 in
-  Llvm.dump_value (Irgen.gen_toplevel ast fpm);
-  print_newline ()
-let dump_module () =
-  Llvm.dump_module Irgen.the_module;
-  print_newline ()
+(* let irgen str =
+   let ast = parse str in
+   let _ = Tinf.tinf [] ast 0 in
+   Llvm.dump_value (Irgen.gen_toplevel ast fpm);
+   print_newline ()
+   let dump_module () =
+   Llvm.dump_module Irgen.the_module;
+   print_newline () *)
 
-let exec_jit str =
-  let ast = parse str in
-  let _ = Tinf.tinf [] ast 0 in
-  if not (Llvm_executionengine.initialize ()) then
+(* let exec_jit str =
+   let ast = parse str in
+   let _ = Tinf.tinf [] ast 0 in
+   if not (Llvm_executionengine.initialize ()) then
     failwith "unsupported target"
-  else
+   else
     (
       ignore (Irgen.gen_toplevel ast fpm);
       let ee = Llvm_executionengine.create Irgen.the_module in
       let func_name = "_toplevel_" ^ (string_of_int (!Irgen.toplevel_count - 1)) in
       let fp = Llvm_executionengine.get_function_address func_name (Foreign.funptr Ctypes.(void @-> returning void)) ee in
       fp ();
-    )
+    ) *)

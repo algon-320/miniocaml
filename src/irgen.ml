@@ -3,7 +3,7 @@ exception Error of string
 let context = Llvm.global_context ()
 let the_module = Llvm.create_module context "mini-ocaml"
 let builder = Llvm.builder context
-let named_values : (string, Llvm.llvalue) Hashtbl.t = Hashtbl.create 10
+let env_depth : (string, int) Hashtbl.t = Hashtbl.create 10
 let ptr = Llvm.pointer_type
 
 let int_of_bool b = if b then 1 else 0
@@ -34,7 +34,7 @@ let rec get_list_type content_ty =
         content_llty
       else
         ptr content_llty in
-    let () = Llvm.struct_set_body t [|field; ptr t|] false in
+    Llvm.struct_set_body t [|field; ptr t|] false;
     Hashtbl.add list_types content_ty t;
     t
 
@@ -45,6 +45,33 @@ and type_to_lltype = function
   | Type.TList(t) -> get_list_type t
   | Type.TArrow(t1, t2) -> failwith "type_to_lltype: unimplemented"
   | Type.TVar(name) -> failwith "type_to_lltype: unimplemented"
+
+let env_t =
+  let t = Llvm.named_struct_type context "env_t" in
+  Llvm.struct_set_body t [|ptr t; ptr i8_t|] false;
+  t
+let search_variable =
+  let fun_ty = Llvm.function_type (ptr i8_t) [|ptr env_t; int64_t|] in
+  let f = Llvm.declare_function "search_var" fun_ty the_module in
+  let env = (Llvm.params f).(0) in
+  let cnt = (Llvm.params f).(1) in
+  let entry_bb = Llvm.append_block context "entry" f in
+  let then_bb = Llvm.append_block context "then" f in
+  let else_bb = Llvm.append_block context "else" f in
+  let _ = Llvm.position_at_end entry_bb builder;
+    let cond = Llvm.build_icmp Llvm.Icmp.Eq cnt (Llvm.const_int int64_t 0) "if_zero" builder in
+    ignore (Llvm.build_cond_br cond then_bb else_bb builder) in
+  let _ = Llvm.position_at_end then_bb builder;
+    let value_p = Llvm.build_struct_gep env 1 "env_value_p" builder in
+    let value = Llvm.build_load value_p "env_value" builder in
+    ignore (Llvm.build_ret value builder) in
+  let _ = Llvm.position_at_end else_bb builder;
+    let parent_env_p = Llvm.build_struct_gep env 0 "env_parent_p" builder in
+    let parent_env = Llvm.build_load parent_env_p "env_parent" builder in
+    let pred_cnt = Llvm.build_sub cnt (Llvm.const_int int64_t 1) "pred_cnt" builder in
+    let ret = Llvm.build_call f [|parent_env; pred_cnt|] "ret" builder in
+    ignore (Llvm.build_ret ret builder) in
+  f
 
 let ast_type e = Exp.ExpHash.find Tinf.type_info e
 
@@ -168,38 +195,28 @@ let build_gcmalloc size ret_type name builder =
 let build_gcmalloc_obj ty name builder =
   build_gcmalloc (Llvm.size_of ty) (ptr ty) name builder
 
-let rec gen_exp e = match e with
-  | Exp.Var(name) -> (
-      try
-        let v = Hashtbl.find named_values name in
-        if Type.is_atomic @@ ast_type e then
-          Llvm.build_load v "var" builder
-        else
-          v
-      with Not_found ->
-        failwith @@ Printf.sprintf "unbound value: %s" name
-    )
+let rec gen_exp e env depth = match e with
   | Exp.IntLit(n) -> Llvm.const_int int64_t n
   | Exp.BoolLit(b) -> Llvm.const_int bool_t (int_of_bool b)
   | Exp.UnitLit -> Llvm.const_null int64_t
   | Exp.Add(e1, e2) ->
-    Llvm.build_add (gen_exp e1) (gen_exp e2) "add" builder
+    Llvm.build_add (gen_exp e1 env depth) (gen_exp e2 env depth) "add" builder
   | Exp.Sub(e1, e2) ->
-    Llvm.build_sub (gen_exp e1) (gen_exp e2) "sub" builder
+    Llvm.build_sub (gen_exp e1 env depth) (gen_exp e2 env depth) "sub" builder
   | Exp.Mul(e1, e2) ->
-    Llvm.build_mul (gen_exp e1) (gen_exp e2) "mul" builder
+    Llvm.build_mul (gen_exp e1 env depth) (gen_exp e2 env depth) "mul" builder
   | Exp.Div(e1, e2) ->
-    Llvm.build_sdiv (gen_exp e1) (gen_exp e2) "sdiv" builder
+    Llvm.build_sdiv (gen_exp e1 env depth) (gen_exp e2 env depth) "sdiv" builder
   | Exp.Eq(e1, e2) ->
-    Llvm.build_icmp Llvm.Icmp.Eq (gen_exp e1) (gen_exp e2) "eq" builder
+    Llvm.build_icmp Llvm.Icmp.Eq (gen_exp e1 env depth) (gen_exp e2 env depth) "eq" builder
   | Exp.Ne(e1, e2) ->
-    Llvm.build_icmp Llvm.Icmp.Ne (gen_exp e1) (gen_exp e2) "ne" builder
+    Llvm.build_icmp Llvm.Icmp.Ne (gen_exp e1 env depth) (gen_exp e2 env depth) "ne" builder
   | Exp.Gt(e1, e2) ->
-    Llvm.build_icmp Llvm.Icmp.Sgt (gen_exp e1) (gen_exp e2) "gt" builder
+    Llvm.build_icmp Llvm.Icmp.Sgt (gen_exp e1 env depth) (gen_exp e2 env depth) "gt" builder
   | Exp.Lt(e1, e2) ->
-    Llvm.build_icmp Llvm.Icmp.Slt (gen_exp e1) (gen_exp e2) "lt" builder
+    Llvm.build_icmp Llvm.Icmp.Slt (gen_exp e1 env depth) (gen_exp e2 env depth) "lt" builder
   | Exp.If(cond, e1, e2) ->
-    let cond = gen_exp cond in
+    let cond = gen_exp cond env depth in
     let start_bb = Llvm.insertion_block builder in
     let the_function = Llvm.block_parent start_bb in
     let then_bb = Llvm.append_block context "then" the_function in
@@ -210,12 +227,12 @@ let rec gen_exp e = match e with
     ignore (Llvm.build_cond_br cond then_bb else_bb builder);
 
     Llvm.position_at_end then_bb builder;
-    let then_val = gen_exp e1 in
+    let then_val = gen_exp e1 env depth in
     let final_then_bb = Llvm.insertion_block builder in
     ignore (Llvm.build_br merge_bb builder);
 
     Llvm.position_at_end else_bb builder;
-    let else_val = gen_exp e2 in
+    let else_val = gen_exp e2 env depth in
     let final_else_bb = Llvm.insertion_block builder in
     ignore (Llvm.build_br merge_bb builder);
 
@@ -231,9 +248,9 @@ let rec gen_exp e = match e with
   | Exp.ListEmpty -> Llvm.const_null @@ ptr i8_t
   | Exp.ListCons(head, tail) ->
     let list_t = type_to_lltype @@ ast_type e in
-    let head_v = gen_exp head in
+    let head_v = gen_exp head env depth in
     let tail_v =
-      let p = gen_exp tail in
+      let p = gen_exp tail env depth in
       match tail with
       | Exp.ListEmpty -> Llvm.build_pointercast p (ptr list_t) "tail_v" builder
       | _ -> p in
@@ -244,57 +261,86 @@ let rec gen_exp e = match e with
     ignore (Llvm.build_store tail_v tail_p builder);
     cons_p
   | Exp.ListHead(lst) ->
-    let cons_p = gen_exp lst in
+    let cons_p = gen_exp lst env depth in
     let head_p = Llvm.build_struct_gep cons_p 0 "head_head_p" builder in
     Llvm.build_load head_p "head_v" builder
   | Exp.ListTail(lst) ->
-    let cons_p = gen_exp lst in
+    let cons_p = gen_exp lst env depth in
     let tail_p = Llvm.build_struct_gep cons_p 1 "tail_tail_p" builder in
     Llvm.build_load tail_p "tail_v" builder
 
-  | Exp.Skip(e1, e2) -> ignore (gen_exp e1); gen_exp e2
+  | Exp.Skip(e1, e2) -> ignore (gen_exp e1 env depth); gen_exp e2 env depth
   | Exp.Print(e) ->
     let current_bb = Llvm.insertion_block builder in
     let printer = get_printer @@ ast_type e in
     Llvm.position_at_end current_bb builder;
-    ignore (Llvm.build_call printer [|gen_exp e|] "" builder);
+    ignore (Llvm.build_call printer [|gen_exp e env depth|] "" builder);
     let newline = get_global_constant_string "\n" in
     ignore (Llvm.build_call printf [|newline|] "" builder);
     Llvm.const_null int64_t
 
+  | Exp.Var(name) -> (
+      try
+        let d = Hashtbl.find env_depth name in
+        let value_p = Llvm.build_call search_variable [|env; Llvm.const_int int64_t (depth - d)|] "value_p" builder in
+        let ty = ast_type e in
+        let p = Llvm.build_pointercast value_p (ptr @@ type_to_lltype ty) "" builder in
+        if Type.is_atomic ty then
+          Llvm.build_load p "value" builder
+        else
+          p
+      with Not_found ->
+        failwith @@ Printf.sprintf "unbound value: %s" name
+    )
   | Exp.Let(name, e1, e2) -> (
-      let v1 = gen_exp e1 in
+      let v1 = gen_exp e1 env depth in
       let v =
         if Type.is_atomic @@ ast_type e1 then
           let p = build_gcmalloc_obj (type_to_lltype @@ ast_type e1) "p" builder in
           ignore (Llvm.build_store v1 p builder);
           p
         else v1 in
-      Hashtbl.add named_values name v;
-      let v2 = gen_exp e2 in
-      Hashtbl.remove named_values name;
+
+      let new_env = build_gcmalloc_obj env_t "env" builder in
+      let parent_p = Llvm.build_struct_gep new_env 0 "env_parent_p" builder in
+      let value_p = Llvm.build_struct_gep new_env 1 "env_value_p" builder in
+      ignore (Llvm.build_store env parent_p builder);
+      let vp = Llvm.build_pointercast v (ptr i8_t) "cast" builder in
+      ignore (Llvm.build_store vp value_p builder);
+
+      Hashtbl.add env_depth name (depth + 1);
+      let v2 = gen_exp e2 new_env (depth + 1) in
+      Hashtbl.remove env_depth name;
       v2
     )
+
+  | Exp.Fun(arg, e) ->
+    failwith ""
+
+  | Exp.App(closure, e) ->
+    failwith ""
+
   | _ -> failwith "gen_exp: unimplemented"
 
-and gen_function fun_name args ret_type body fpm =
-  let args_ty = Array.map (fun (_, ty) -> ty) args in
-  let fun_ty = Llvm.function_type ret_type args_ty in
-  let the_function = match Llvm.lookup_function fun_name the_module with
+(* and gen_function fun_name args ret_type body fpm =
+   let args_ty = Array.map (fun (_, ty) -> ty) args in
+   let fun_ty = Llvm.function_type ret_type @@ Array.append [|ptr env_t|] args_ty in
+   let the_function = match Llvm.lookup_function fun_name the_module with
     | None -> Llvm.declare_function fun_name fun_ty the_module
     | Some _ -> raise (Error "the function has already been decleared")
-  in
-  Array.iteri (fun i arg ->
+   in
+   Array.iteri (fun i arg ->
       let (arg_name, _) = args.(i) in
       Llvm.set_value_name arg_name arg;
-      Hashtbl.add named_values arg_name arg
+      Hashtbl.add env_depth arg_name arg
     ) (Llvm.params the_function);
 
-  let entry_bb = Llvm.append_block context "entry" the_function in
-  Llvm.position_at_end entry_bb builder;
+   let entry_bb = Llvm.append_block context "entry" the_function in
+   Llvm.position_at_end entry_bb builder;
+   let env_p = (Llvm.params the_function).(0) in
 
-  try
-    let ret_val = gen_exp body in
+   try
+    let ret_val = gen_exp body env_p in
     if ret_type = void_t then
       ignore (Llvm.build_ret_void builder)
     else
@@ -302,18 +348,18 @@ and gen_function fun_name args ret_type body fpm =
     Llvm_analysis.assert_valid_function the_function;
     ignore (Llvm.PassManager.run_function the_function fpm);
     the_function
-  with e ->
+   with e ->
     Llvm.delete_function the_function;
-    raise e
+    raise e *)
 
-let toplevel_count = ref 0
-let gen_toplevel e fpm =
-  let name = "_toplevel_" ^ (string_of_int !toplevel_count) in
-  let code = gen_function name [||] void_t (Exp.Skip(e, Exp.UnitLit)) fpm in
-  toplevel_count := !toplevel_count + 1;
-  code
+(* let toplevel_count = ref 0
+   let gen_toplevel e fpm =
+   let name = "_toplevel_" ^ (string_of_int !toplevel_count) in
+   let code = gen_function name [||] void_t (Exp.Skip(e, Exp.UnitLit)) fpm in
+   toplevel_count := !toplevel_count + 1;
+   code *)
 
-let gen_main e mpm =
+let gen_main e =
   let fun_ty = Llvm.function_type int32_t [||] in
   let the_function = match Llvm.lookup_function "main" the_module with
     | None -> Llvm.declare_function "main" fun_ty the_module
@@ -323,7 +369,7 @@ let gen_main e mpm =
   Llvm.position_at_end entry_bb builder;
   try
     ignore (Llvm.build_call gcinit [||] "" builder);
-    let v = gen_exp e in
+    let v = gen_exp e (Llvm.const_null (ptr env_t)) 0 in
     if Llvm.type_of v = int64_t then
       let ret = Llvm.build_trunc v int32_t "tmp" builder in
       ignore (Llvm.build_ret ret builder)
@@ -331,7 +377,6 @@ let gen_main e mpm =
       ignore (Llvm.build_ret (Llvm.const_int int32_t 0) builder)
     ;
     Llvm_analysis.assert_valid_function the_function;
-    ignore (Llvm.PassManager.run_module the_module mpm);
     the_function
   with e ->
     Llvm.delete_function the_function;

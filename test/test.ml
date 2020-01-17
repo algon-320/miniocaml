@@ -122,9 +122,4 @@ let () = test __LINE__ "(); 123"
     (Skip(UnitLit, IntLit 123))
     (VInt 123) (TInt)
 
-let () = Main.irgen "(1 + 2) * 3"
-let () = Main.irgen "true"
-let () = Main.irgen "1::2::[]"
-let () = Main.irgen "ListHead (1::2::[])"
-
 let () = if !all_passed then print_string "all tests passed !\n"
