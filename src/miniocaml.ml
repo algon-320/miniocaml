@@ -38,7 +38,8 @@ let compile code_str executable_filename =
   try
     let ast = match Parser.main Lexer.token (Lexing.from_string code_str) with
       | Some ast ->
-        ignore (Tinf.get_type ast);
+        let (_, _, theta, _) = Tinf.tinf [] ast 0 in
+        Tinf.update_type_info theta;
         ast
       | None ->
         Exp.UnitLit
@@ -55,6 +56,7 @@ let compile code_str executable_filename =
     Llvm_scalar_opts.add_cfg_simplification mpm;
 
     ignore (Irgen.gen_main ast mpm);
+    Llvm_analysis.assert_valid_module Irgen.the_module;
 
     Random.self_init ();
     let asm_tmp = Printf.sprintf "tmp%d.s" (Random.int 1000000000) in

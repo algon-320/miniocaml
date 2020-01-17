@@ -46,29 +46,17 @@ and type_to_lltype = function
   | Type.TArrow(t1, t2) -> failwith "type_to_lltype: unimplemented"
   | Type.TVar(name) -> failwith "type_to_lltype: unimplemented"
 
-let fmtstr_int =
-  Llvm.define_global "fmtstr_int"
-    (Llvm.const_string context "%lld\x00") the_module
-let fmtstr_true =
-  Llvm.define_global "fmtstr_true"
-    (Llvm.const_string context "true\x00") the_module
-let fmtstr_false =
-  Llvm.define_global "fmtstr_false"
-    (Llvm.const_string context "false\x00") the_module
-let fmtstr_lbracket =
-  Llvm.define_global "fmtstr_lbracket"
-    (Llvm.const_string context "[\x00") the_module
-let fmtstr_rbracket =
-  Llvm.define_global "fmtstr_rbracket"
-    (Llvm.const_string context "]\x00") the_module
-let fmtstr_semicolon =
-  Llvm.define_global "fmtstr_semicolon"
-    (Llvm.const_string context "; \x00") the_module
-let fmtstr_newline =
-  Llvm.define_global "fmtstr_newline"
-    (Llvm.const_string context "\n\x00") the_module
-let build_global_string_ptr gs =
-  Llvm.build_pointercast gs (ptr i8_t) "tmp_gs_ptr" builder
+let global_constants : (Llvm.llvalue, Llvm.llvalue) Hashtbl.t = Hashtbl.create 256
+let get_global_constant const =
+  try
+    Hashtbl.find global_constants const
+  with Not_found ->
+    let gv = Llvm.define_global "" const the_module in
+    Hashtbl.add global_constants const gv;
+    gv
+let get_global_constant_string str =
+  let v = get_global_constant @@ Llvm.const_stringz context str in
+  Llvm.build_pointercast v (ptr i8_t) "" builder
 
 let printf =
   let printf_type = Llvm.var_arg_function_type void_t [|(ptr i8_t)|] in
@@ -88,7 +76,7 @@ let rec get_printer t =
           let v = (Llvm.params f).(0) in
           let entry_bb = Llvm.append_block context "entry" f in
           let _ = Llvm.position_at_end entry_bb builder;
-            let p = build_global_string_ptr fmtstr_int in
+            let p = get_global_constant_string "%d" in
             ignore (Llvm.build_call printf [|p; v|] "" builder);
             ignore (Llvm.build_ret_void builder) in
           f
@@ -104,11 +92,11 @@ let rec get_printer t =
           let _ = Llvm.position_at_end entry_bb builder;
             ignore (Llvm.build_cond_br v then_bb else_bb builder) in
           let _ = Llvm.position_at_end then_bb builder;
-            let p = build_global_string_ptr fmtstr_true in
+            let p = get_global_constant_string "true" in
             ignore (Llvm.build_call printf [|p; v|] "" builder);
             ignore (Llvm.build_br merge_bb builder) in
           let _ = Llvm.position_at_end else_bb builder;
-            let p = build_global_string_ptr fmtstr_false in
+            let p = get_global_constant_string "false" in
             ignore (Llvm.build_call printf [|p; v|] "" builder);
             ignore (Llvm.build_br merge_bb builder) in
           let _ = Llvm.position_at_end merge_bb builder;
@@ -139,7 +127,7 @@ let rec get_printer t =
               (* print head *)
               ignore (Llvm.build_call printer [|head_v|] "" builder);
               (* print ';' *)
-              let comma = build_global_string_ptr fmtstr_semicolon in
+              let comma = get_global_constant_string "; " in
               ignore (Llvm.build_call printf [|comma|] "" builder);
               (* print tail *)
               ignore (Llvm.build_call f [|tail_v|] "" builder);
@@ -150,10 +138,10 @@ let rec get_printer t =
             let v = (Llvm.params f).(0) in
             let entry_bb = Llvm.append_block context "entry" f in
             let _ = Llvm.position_at_end entry_bb builder;
-              let lbracket = build_global_string_ptr fmtstr_lbracket in
+              let lbracket = get_global_constant_string "[" in
               ignore (Llvm.build_call printf [|lbracket|] "" builder);
               ignore (Llvm.build_call inner [|v|] "" builder);
-              let rbracket = build_global_string_ptr fmtstr_rbracket in
+              let rbracket = get_global_constant_string "]" in
               ignore (Llvm.build_call printf [|rbracket|] "" builder);
               ignore (Llvm.build_ret_void builder) in
             f in
@@ -181,7 +169,8 @@ let build_gcmalloc_obj ty name builder =
 let rec gen_exp e = match e with
   | Exp.Var(name) -> (
       try
-        Hashtbl.find named_values name
+        let p = Hashtbl.find named_values name in
+        Llvm.build_load p "var" builder
       with Not_found ->
         failwith @@ Printf.sprintf "unbound value: %s" name
     )
@@ -227,7 +216,7 @@ let rec gen_exp e = match e with
 
     Llvm.position_at_end merge_bb builder;
     (
-      match Tinf.get_type e with
+      match Hashtbl.find Tinf.type_info e with
       | Type.TUnit ->
         Llvm.const_null int64_t
       | _ ->
@@ -236,7 +225,7 @@ let rec gen_exp e = match e with
     )
   | Exp.ListEmpty -> Llvm.const_null @@ ptr i8_t
   | Exp.ListCons(head, tail) ->
-    let list_t = type_to_lltype (Tinf.get_type e) in
+    let list_t = type_to_lltype @@ Hashtbl.find Tinf.type_info e in
     let head_v = gen_exp head in
     let tail_v =
       let p = gen_exp tail in
@@ -261,16 +250,16 @@ let rec gen_exp e = match e with
   | Exp.Skip(e1, e2) -> ignore (gen_exp e1); gen_exp e2
   | Exp.Print(e) ->
     let current_bb = Llvm.insertion_block builder in
-    let printer = get_printer @@ Tinf.get_type e in
+    let printer = get_printer @@ Hashtbl.find Tinf.type_info e in
     Llvm.position_at_end current_bb builder;
     ignore (Llvm.build_call printer [|gen_exp e|] "" builder);
-    let newline = build_global_string_ptr fmtstr_newline in
+    let newline = get_global_constant_string "\n" in
     ignore (Llvm.build_call printf [|newline|] "" builder);
     Llvm.const_null int64_t
 
   | Exp.Let(name, e1, e2) -> (
       let v1 = gen_exp e1 in
-      let v1p = build_gcmalloc_obj (type_to_lltype @@ Tinf.get_type e1) "v1" builder in
+      let v1p = build_gcmalloc_obj (type_to_lltype @@ Hashtbl.find Tinf.type_info e1) "v1" builder in
       ignore (Llvm.build_store v1 v1p builder);
       Hashtbl.add named_values name v1p;
       let v2 = gen_exp e2 in
