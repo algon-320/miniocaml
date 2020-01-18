@@ -11,11 +11,9 @@ repl-options:
 compile-options:
     --help, -h        print this help to stderr.
     -o 'executable'   specify name of the executable. (default: 'a.out')
+    -emit-llvm        emit LLVM IR
 
 "
-
-type options =
-  | Help
 
 let rec repl () =
   print_string "miniocaml # ";
@@ -34,10 +32,28 @@ let rec repl () =
   );
   repl ()
 
-let compile code_str executable_filename =
+
+type options =
+  | Executable of string
+  | EmitLLVM
+
+let compile filename options =
   if not (Llvm_executionengine.initialize ()) then
     failwith "target is not supported";
   try
+    let executable_filename = ref "a.out" in
+    let emit_llvm = ref false in
+
+    let rec option_extract = function
+      | [] -> ()
+      | x::xs -> (
+          match x with
+          | Executable(exe) -> executable_filename := exe
+          | EmitLLVM -> emit_llvm := true
+        ); option_extract xs
+    in option_extract options;
+
+    let code_str = Std.input_file ~bin:false filename in
     let ast = match Parser.main Lexer.token (Lexing.from_string code_str) with
       | Some ast ->
         let (_, _, theta, _) = Tinf.tinf [] ast 0 in
@@ -65,14 +81,18 @@ let compile code_str executable_filename =
     Llvm_analysis.assert_valid_module Irgen.the_module;
     ignore (Llvm.PassManager.run_module Irgen.the_module mpm);
 
-    (* Llvm.dump_module Irgen.the_module; *)
+    if !emit_llvm then
+      let ir = Llvm.string_of_llmodule Irgen.the_module in
+      Std.output_file ~filename:(filename ^ ".ll") ~text:ir
+    else ()
+    ;
 
     Random.self_init ();
     let asm_tmp = Printf.sprintf "tmp%d.s" (Random.int 1000000000) in
     (* emit assembly *)
     Llvm_target.TargetMachine.emit_to_file Irgen.the_module Llvm_target.CodeGenFileType.AssemblyFile asm_tmp target_machine;
     (* generate executable using `clang` *)
-    ignore (Sys.command @@ Printf.sprintf "clang %s -lgc -o %s" asm_tmp executable_filename);
+    ignore (Sys.command @@ Printf.sprintf "clang %s -lgc -o %s" asm_tmp !executable_filename);
     (* remove assembly file *)
     ignore (Sys.command @@ Printf.sprintf "rm %s" asm_tmp)
   with Failure e ->
@@ -82,28 +102,25 @@ let compile code_str executable_filename =
 let main () =
   let argc = Array.length Sys.argv in
   let source = ref None in
-  let exe_filename = ref "a.out" in
   let rec process_arguments i =
-    if i = argc then ()
-    else (
-      let skip =
-        (match Sys.argv.(i) with
-         | "--help" | "-h" ->
-           print_string usage;
-           ignore (exit 0);
-           0
-         | "-o" ->
-           exe_filename := Sys.argv.(i + 1);
-           1
-         | filename ->
-           source := Some (Std.input_file ~bin:false filename);
-           0
-        ) in
-      process_arguments (i + 1 + skip)
-    )
-  in process_arguments 1;
+    if i = argc then []
+    else (match Sys.argv.(i) with
+        | "--help" | "-h" ->
+          print_string usage;
+          ignore (exit 0);
+          process_arguments @@ i + 1
+        | "-o" ->
+          Executable(Sys.argv.(i + 1))::(process_arguments @@ i + 2)
+        | "-emit-llvm" ->
+          EmitLLVM::(process_arguments @@ i + 1)
+        | filename ->
+          source := Some filename;
+          process_arguments (i + 1)
+      )
+  in
+  let options = process_arguments 1 in
   match !source with
-  | Some(code) -> compile code !exe_filename
+  | Some filename -> compile filename options
   | None -> repl ()
 ;;
 
