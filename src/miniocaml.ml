@@ -65,6 +65,8 @@ let compile code_str executable_filename =
     Llvm_analysis.assert_valid_module Irgen.the_module;
     ignore (Llvm.PassManager.run_module Irgen.the_module mpm);
 
+    (* Llvm.dump_module Irgen.the_module; *)
+
     Random.self_init ();
     let asm_tmp = Printf.sprintf "tmp%d.s" (Random.int 1000000000) in
     (* emit assembly *)

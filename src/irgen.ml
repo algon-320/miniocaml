@@ -15,6 +15,16 @@ let int32_t = Llvm.i32_type context
 let int64_t = Llvm.i64_type context
 let bool_t = Llvm.i1_type context
 
+let env_t =
+  let t = Llvm.named_struct_type context "env_t" in
+  Llvm.struct_set_body t [|ptr t; ptr i8_t|] false;
+  t
+
+let closure_t =
+  let t = Llvm.named_struct_type context "closure_t" in
+  Llvm.struct_set_body t [|ptr env_t; ptr i8_t|] false;
+  t
+
 let rec typeid_string = function
   | Type.TInt -> "int"
   | Type.TBool -> "bool"
@@ -43,13 +53,9 @@ and type_to_lltype = function
   | Type.TBool -> bool_t
   | Type.TUnit -> void_t
   | Type.TList(t) -> get_list_type t
-  | Type.TArrow(t1, t2) -> failwith "type_to_lltype: unimplemented"
-  | Type.TVar(name) -> failwith "type_to_lltype: unimplemented"
+  | Type.TArrow(_, _) -> closure_t
+  | Type.TVar(name) -> failwith "type_to_lltype: TVar unimplemented"
 
-let env_t =
-  let t = Llvm.named_struct_type context "env_t" in
-  Llvm.struct_set_body t [|ptr t; ptr i8_t|] false;
-  t
 let search_variable =
   let fun_ty = Llvm.function_type (ptr i8_t) [|ptr env_t; int64_t|] in
   let f = Llvm.declare_function "search_var" fun_ty the_module in
@@ -190,10 +196,12 @@ let gcmalloc =
   let gcmalloc_type = Llvm.function_type (ptr i8_t) [|Llvm.i64_type context|] in
   Llvm.declare_function "GC_malloc" gcmalloc_type the_module
 let build_gcmalloc size ret_type name builder =
-  let p = Llvm.build_call gcmalloc [|size|] (name ^ "_tmp") builder in
+  let p = Llvm.build_call gcmalloc [|size|] name builder in
   Llvm.build_pointercast p ret_type name builder
 let build_gcmalloc_obj ty name builder =
   build_gcmalloc (Llvm.size_of ty) (ptr ty) name builder
+
+let closure_count = ref 0
 
 let rec gen_exp e env depth = match e with
   | Exp.IntLit(n) -> Llvm.const_int int64_t n
@@ -282,11 +290,12 @@ let rec gen_exp e env depth = match e with
   | Exp.Var(name) -> (
       try
         let d = Hashtbl.find env_depth name in
-        let value_p = Llvm.build_call search_variable [|env; Llvm.const_int int64_t (depth - d)|] "value_p" builder in
+        let args = [|env; Llvm.const_int int64_t (depth - d)|] in
+        let var_p = Llvm.build_call search_variable args ("var_" ^ name ^ "_p") builder in
         let ty = ast_type e in
-        let p = Llvm.build_pointercast value_p (ptr @@ type_to_lltype ty) "" builder in
+        let p = Llvm.build_pointercast var_p (ptr @@ type_to_lltype ty) "" builder in
         if Type.is_atomic ty then
-          Llvm.build_load p "value" builder
+          Llvm.build_load p ("var_" ^ name) builder
         else
           p
       with Not_found ->
@@ -296,14 +305,14 @@ let rec gen_exp e env depth = match e with
       let v1 = gen_exp e1 env depth in
       let v =
         if Type.is_atomic @@ ast_type e1 then
-          let p = build_gcmalloc_obj (type_to_lltype @@ ast_type e1) "p" builder in
+          let p = build_gcmalloc_obj (type_to_lltype @@ ast_type e1) ("let_" ^ name) builder in
           ignore (Llvm.build_store v1 p builder);
           p
         else v1 in
 
       let new_env = build_gcmalloc_obj env_t "env" builder in
-      let parent_p = Llvm.build_struct_gep new_env 0 "env_parent_p" builder in
-      let value_p = Llvm.build_struct_gep new_env 1 "env_value_p" builder in
+      let parent_p = Llvm.build_struct_gep new_env 0 "env.parent_p" builder in
+      let value_p = Llvm.build_struct_gep new_env 1 "env.value_p" builder in
       ignore (Llvm.build_store env parent_p builder);
       let vp = Llvm.build_pointercast v (ptr i8_t) "cast" builder in
       ignore (Llvm.build_store vp value_p builder);
@@ -314,11 +323,73 @@ let rec gen_exp e env depth = match e with
       v2
     )
 
-  | Exp.Fun(arg, e) ->
-    failwith ""
+  | Exp.Fun(arg, body) ->
+    let new_env = build_gcmalloc_obj env_t "new_env" builder in
+    let parent_p = Llvm.build_struct_gep new_env 0 "new_env.parent_p" builder in
+    ignore (Llvm.build_store env parent_p builder);
+    let closure = build_gcmalloc_obj closure_t "closure" builder in
+    (
+      let closure_env = Llvm.build_struct_gep closure 0 "closure.env" builder in
+      ignore (Llvm.build_store new_env closure_env builder);
+    );
 
-  | Exp.App(closure, e) ->
-    failwith ""
+    let current_bb = Llvm.insertion_block builder in
+    Hashtbl.add env_depth arg (depth + 1);
+    let f =
+      let ret_ty =
+        if Type.is_atomic @@ ast_type body then
+          type_to_lltype @@ ast_type body
+        else
+          ptr @@ type_to_lltype @@ ast_type body
+      in
+      let fun_ty = Llvm.function_type ret_ty [|ptr env_t|] in
+      let fun_name = "closure_" ^ (string_of_int !closure_count) in
+      closure_count := !closure_count + 1;
+      let f = Llvm.declare_function fun_name fun_ty the_module in
+      let entry_bb = Llvm.append_block context "entry" f in
+      let fun_env = (Llvm.params f).(0) in
+      Llvm.position_at_end entry_bb builder;
+      let ret = gen_exp body fun_env (depth + 1) in
+      ignore (Llvm.build_ret ret builder);
+      f
+    in
+    Hashtbl.remove env_depth arg;
+    Llvm.position_at_end current_bb builder;
+
+    (
+      let fun_ptr = Llvm.build_struct_gep closure 1 "closure.fun_ptr" builder in
+      let fun_addr = Llvm.build_pointercast f (ptr i8_t) "closure.fun_addr"builder in
+      ignore (Llvm.build_store fun_addr fun_ptr builder);
+    );
+    closure
+
+  | Exp.App(f, e) ->
+    let arg = gen_exp e env depth in
+    let arg =
+      if Type.is_atomic @@ ast_type e then
+        let p = build_gcmalloc_obj (type_to_lltype @@ ast_type e) "app_arg" builder in
+        ignore (Llvm.build_store arg p builder);
+        p
+      else arg in
+    let closure = gen_exp f env depth in
+    let clos_env_p = Llvm.build_struct_gep closure 0 "closure.env_p" builder in
+    let clos_env = Llvm.build_load clos_env_p "closure.env" builder in
+    let arg_p = Llvm.build_struct_gep clos_env 1 "closure.env.arg_p" builder in
+    let arg_cast = Llvm.build_pointercast arg (ptr i8_t) "closure.env.arg_cast" builder in
+    ignore (Llvm.build_store arg_cast arg_p builder);
+    let clos_fun_p = Llvm.build_struct_gep closure 1 "closure.fun_p" builder in
+    let clos_fun_addr = Llvm.build_load clos_fun_p "closure.fun_addr" builder in
+    let fun_type = match ast_type f with
+      | TArrow(_, t) ->
+        let ret_ty =
+          if Type.is_atomic t then
+            type_to_lltype t
+          else
+            ptr @@ type_to_lltype t
+        in Llvm.function_type ret_ty [|ptr env_t|]
+      | _ -> failwith "type error" in
+    let clos_fun = Llvm.build_pointercast clos_fun_addr (ptr fun_type) "closure.fun" builder in
+    Llvm.build_call clos_fun [|clos_env|] "app_result" builder
 
   | _ -> failwith "gen_exp: unimplemented"
 
