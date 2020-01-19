@@ -68,12 +68,12 @@ let rec string_of_exp e =
     | Let(var, body, stmt) ->  Printf.sprintf "let %s = %s in %s" var (string_of_exp body) (string_of_exp stmt)
     | LetRec(f, var, body, stmt) -> Printf.sprintf "let rec %s %s = %s in %s" f var (string_of_exp body) (string_of_exp stmt)
     | Fun(var, body) -> Printf.sprintf "func %s -> %s" var (string_of_exp body)
-    | App(e1, e2) -> Printf.sprintf "(%s) (%s)" (string_of_exp e1) (string_of_exp e2)
+    | App(e1, e2) -> Printf.sprintf "((%s) (%s))" (string_of_exp e1) (string_of_exp e2)
 
     | Match(e, _) -> Printf.sprintf "match %s with (.. omitted)" (string_of_exp e)
 
     | ListEmpty -> Printf.sprintf "[]"
-    | ListCons(h, t) -> Printf.sprintf "(%s::%s)" (string_of_exp h) (string_of_exp t)
+    | ListCons(h, t) -> Printf.sprintf "((%s)::%s)" (string_of_exp h) (string_of_exp t)
     | ListHead(l) -> Printf.sprintf "ListHead %s" (string_of_exp l)
     | ListTail(l) -> Printf.sprintf "ListTail %s" (string_of_exp l)
 

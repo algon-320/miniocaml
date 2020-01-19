@@ -29,7 +29,10 @@ let rec typeid_string = function
   | Type.TInt -> "int"
   | Type.TBool -> "bool"
   | Type.TList(ct) -> (typeid_string ct) ^ "_list"
-  | _ -> failwith "name: unimplemented"
+  | Type.TUnit -> "unit"
+  | Type.TArrow(t1, t2) -> Printf.sprintf "arrow_%s_to_%s" (typeid_string t1) (typeid_string t2)
+  | Type.TVar(_) -> failwith "typeid_string: TVar unimplemented"
+  | _ -> failwith "typeid_string: unimplemented"
 
 (* content_tyを要素に持つリストの型 *)
 let list_types : (Type.ty, Llvm.lltype) Hashtbl.t = Hashtbl.create 10
@@ -38,7 +41,12 @@ let rec get_list_type content_ty =
     Hashtbl.find list_types content_ty
   with Not_found ->
     let t = Llvm.named_struct_type context ((typeid_string content_ty) ^ "_list_t") in
-    Llvm.struct_set_body t [|handling_lltype_of content_ty; ptr t|] false;
+    (
+      if content_ty = Type.TUnit then
+        Llvm.struct_set_body t [|ptr t|] false
+      else
+        Llvm.struct_set_body t [|handling_lltype_of content_ty; ptr t|] false
+    );
     Hashtbl.add list_types content_ty t;
     t
 
@@ -55,6 +63,35 @@ and handling_lltype_of ty =
     lltype_of ty
   else
     ptr @@ lltype_of ty
+
+let list_store_head list value content_ty =
+  if content_ty = Type.TUnit then
+    ()
+  else
+    let head_p = Llvm.build_struct_gep list 0 "list.head_p" builder in
+    ignore (Llvm.build_store value head_p builder)
+let list_load_head list content_ty =
+  if content_ty = Type.TUnit then
+    Llvm.undef void_t
+  else
+    let head_p = Llvm.build_struct_gep list 0 "list.head_p" builder in
+    Llvm.build_load head_p "list.head" builder
+
+let list_store_tail list value content_ty =
+  let tail_p =
+    if content_ty = Type.TUnit then
+      Llvm.build_struct_gep list 0 "list.tail_p" builder
+    else
+      Llvm.build_struct_gep list 1 "list.tail_p" builder
+  in
+  ignore (Llvm.build_store value tail_p builder)
+let list_load_tail list content_ty =
+  let tail_p =
+    if content_ty = Type.TUnit then
+      Llvm.build_struct_gep list 0 "list.tail_p" builder
+    else
+      Llvm.build_struct_gep list 1 "list.tail_p" builder in
+  Llvm.build_load tail_p "list.tail" builder
 
 (* TODO: make it to simple while loop *)
 let climbup_env_func =
@@ -111,6 +148,17 @@ let rec get_printer t =
     let prev_bb = Llvm.insertion_block builder in
     let f =
       match t with
+      | Type.TUnit -> (
+          let fun_ty = Llvm.function_type void_t [||] in
+          let f = Llvm.declare_function "unit_printer" fun_ty the_module in
+          let entry_bb = Llvm.append_block context "entry" f in
+          Llvm.position_at_end entry_bb builder; (
+            let p = get_global_constant_string "()" in
+            ignore (Llvm.build_call printf [|p|] "" builder);
+            ignore (Llvm.build_ret_void builder)
+          );
+          f
+        )
       | Type.TInt -> (
           let fun_ty = Llvm.function_type void_t [|int64_t|] in
           let f = Llvm.declare_function "int_printer" fun_ty the_module in
@@ -173,18 +221,18 @@ let rec get_printer t =
             );
 
             Llvm.position_at_end else_bb builder; (
-              let head_p = Llvm.build_struct_gep v 0 "head_p" builder in
-              let head_v = Llvm.build_load head_p "head_v" builder in
-              let tail_p = Llvm.build_struct_gep v 1 "tail_p" builder in
-              let tail_v = Llvm.build_load tail_p "tail_v" builder in
+              let head = list_load_head v ct in
+              let tail = list_load_tail v ct in
               let printer = get_printer ct in
-              (* print head *)
-              ignore (Llvm.build_call printer [|head_v|] "" builder);
-              (* print ';' *)
+              (
+                if ct = Type.TUnit then
+                  ignore (Llvm.build_call printer [||] "" builder)
+                else
+                  ignore (Llvm.build_call printer [|head|] "" builder)
+              );
               let comma = get_global_constant_string "; " in
               ignore (Llvm.build_call printf [|comma|] "" builder);
-              (* print tail *)
-              ignore (Llvm.build_call f [|tail_v|] "" builder);
+              ignore (Llvm.build_call f [|tail|] "" builder);
               ignore (Llvm.build_ret_void builder)
             );
             f in
@@ -223,9 +271,11 @@ let build_gcmalloc_obj ty name builder =
   build_gcmalloc (Llvm.size_of ty) (ptr ty) name builder
 
 (* store value to env *)
-let env_store_value value ty env =
+let env_store_value env value ty =
   let value =
-    if Type.is_atomic ty then
+    if ty = Type.TUnit then
+      Llvm.const_pointer_null i8_t
+    else if Type.is_atomic ty then
       let p = build_gcmalloc_obj (lltype_of ty) "" builder in
       ignore (Llvm.build_store value p builder);
       p
@@ -237,11 +287,13 @@ let env_store_value value ty env =
   Llvm.build_store addr value_p builder
 
 (* load value from env *)
-let env_load_value ty env =
+let env_load_value env ty =
   let value_p = Llvm.build_struct_gep env 1 "&env.value" builder in
   let value = Llvm.build_load value_p "(i8*)env.value" builder in
   let value = Llvm.build_pointercast value (ptr @@ lltype_of ty) "env.value" builder in
-  if Type.is_atomic ty then
+  if ty = Type.TUnit then
+    Llvm.undef void_t
+  else if Type.is_atomic ty then
     Llvm.build_load value "" builder
   else
     value
@@ -265,7 +317,7 @@ let closure_count = ref 0
 let rec gen_exp e env depth = match e with
   | Exp.IntLit(n) -> Llvm.const_int int64_t n
   | Exp.BoolLit(b) -> Llvm.const_int bool_t (int_of_bool b)
-  | Exp.UnitLit -> Llvm.const_null int64_t
+  | Exp.UnitLit -> Llvm.undef void_t
   | Exp.Add(e1, e2) ->
     Llvm.build_add (gen_exp e1 env depth) (gen_exp e2 env depth) "add" builder
   | Exp.Sub(e1, e2) ->
@@ -307,7 +359,7 @@ let rec gen_exp e env depth = match e with
     (
       match ast_type e with
       | Type.TUnit ->
-        Llvm.const_null int64_t
+        Llvm.undef void_t
       | _ ->
         let incoming = [(then_val, final_then_bb); (else_val, final_else_bb)] in
         Llvm.build_phi incoming "iftmp" builder
@@ -322,44 +374,48 @@ let rec gen_exp e env depth = match e with
       match tail with
       | Exp.ListEmpty -> Llvm.build_pointercast p (ptr list_t) "tail_v" builder
       | _ -> p in
-    let cons_p = build_gcmalloc_obj list_t "cons_p" builder in
-    let head_p = Llvm.build_struct_gep cons_p 0 "cons_head_p" builder in
-    let tail_p = Llvm.build_struct_gep cons_p 1 "cons_tail_p" builder in
-    ignore (Llvm.build_store head_v head_p builder);
-    ignore (Llvm.build_store tail_v tail_p builder);
+    let cons_p = build_gcmalloc_obj list_t "cons" builder in
+    list_store_head cons_p head_v (ast_type head);
+    list_store_tail cons_p tail_v (ast_type head);
     cons_p
   | Exp.ListHead(lst) ->
     let cons_p = gen_exp lst env depth in
-    let head_p = Llvm.build_struct_gep cons_p 0 "head_head_p" builder in
-    Llvm.build_load head_p "head_v" builder
+    list_load_head cons_p @@ ast_type e
   | Exp.ListTail(lst) ->
     let cons_p = gen_exp lst env depth in
-    let tail_p = Llvm.build_struct_gep cons_p 1 "tail_tail_p" builder in
-    Llvm.build_load tail_p "tail_v" builder
+    let content_ty = match ast_type e with
+      | Type.TList(ct) -> ct
+      | _ -> failwith "type error"
+    in
+    list_load_tail cons_p @@ content_ty
 
   | Exp.Skip(e1, e2) -> ignore (gen_exp e1 env depth); gen_exp e2 env depth
-  | Exp.Print(e) ->
-    let current_bb = Llvm.insertion_block builder in
-    let printer = get_printer @@ ast_type e in
-    Llvm.position_at_end current_bb builder;
-    ignore (Llvm.build_call printer [|gen_exp e env depth|] "" builder);
+  | Exp.Print(e1) ->
+    let printer = get_printer @@ ast_type e1 in
+    let value = gen_exp e1 env depth in
+    (
+      if ast_type e1 = Type.TUnit then
+        ignore (Llvm.build_call printer [||] "" builder)
+      else
+        ignore (Llvm.build_call printer [|value|] "" builder)
+    );
     let newline = get_global_constant_string "\n" in
     ignore (Llvm.build_call printf [|newline|] "" builder);
-    Llvm.const_null int64_t
+    Llvm.undef void_t
 
   | Exp.Var(name) -> (
       try
         let d = Hashtbl.find env_depth name in
         let args = [|env; Llvm.const_int int64_t (depth - d)|] in
         let target_env = Llvm.build_call climbup_env_func args "&target_env" builder in
-        env_load_value (ast_type e) target_env
+        env_load_value target_env @@ ast_type e
       with Not_found ->
         failwith @@ Printf.sprintf "unbound value: %s" name
     )
   | Exp.Let(name, e1, e2) ->
     let v1 = gen_exp e1 env depth in
     let new_env = build_env env None in
-    ignore (env_store_value v1 (ast_type e1) new_env);
+    ignore (env_store_value new_env v1 @@ ast_type e1);
 
     Hashtbl.add env_depth name (depth + 1);
     let v2 = gen_exp e2 new_env (depth + 1) in
@@ -388,7 +444,10 @@ let rec gen_exp e env depth = match e with
 
     Llvm.position_at_end entry_bb builder; (
       let ret = gen_exp body fun_env (depth + 1) in
-      ignore (Llvm.build_ret ret builder);
+      if Llvm.type_of ret = void_t then
+        ignore (Llvm.build_ret_void builder)
+      else
+        ignore (Llvm.build_ret ret builder)
     );
 
     Llvm.position_at_end current_bb builder;
@@ -404,14 +463,14 @@ let rec gen_exp e env depth = match e with
     let closure = gen_exp f env depth in
     let clos_env_p = Llvm.build_struct_gep closure 0 "closure.env_p" builder in
     let clos_env = Llvm.build_load clos_env_p "closure.env" builder in
-    ignore (env_store_value arg (ast_type e) clos_env);
+    ignore (env_store_value clos_env arg @@ ast_type e);
     let clos_fun_p = Llvm.build_struct_gep closure 1 "closure.fun_p" builder in
     let clos_fun_addr = Llvm.build_load clos_fun_p "closure.fun_addr" builder in
     let fun_type = match ast_type f with
       | TArrow(_, t) -> Llvm.function_type (handling_lltype_of t) [|ptr env_t|]
       | _ -> failwith "type error" in
     let clos_fun = Llvm.build_pointercast clos_fun_addr (ptr fun_type) "closure.fun" builder in
-    Llvm.build_call clos_fun [|clos_env|] "app_result" builder
+    Llvm.build_call clos_fun [|clos_env|] "" builder
 
   | _ -> failwith "gen_exp: unimplemented"
 
