@@ -84,6 +84,12 @@ let list_store_tail list value content_ty =
     else
       Llvm.build_struct_gep list 1 "list.tail_p" builder
   in
+
+  (* Printf.printf "list_store_tail: list = %s (%s)\n" (Llvm.string_of_lltype @@ Llvm.type_of list)  (Llvm.value_name list);
+     Printf.printf "list_store_tail: tail_p = %s (%s)\n" (Llvm.string_of_lltype @@ Llvm.type_of tail_p) (Llvm.value_name tail_p);
+     Printf.printf "list_store_tail: value = %s (%s)\n" (Llvm.string_of_lltype @@ Llvm.type_of value) (Llvm.value_name value);
+     flush stdout; *)
+
   ignore (Llvm.build_store value tail_p builder)
 let list_load_tail list content_ty =
   let tail_p =
@@ -304,10 +310,7 @@ let build_env parent value =
   ignore (Llvm.build_store parent parent_p builder);
   (
     match value with
-    | Some v -> (
-        let value_p = Llvm.build_struct_gep new_env 1 "env.value_p" builder in
-        ignore (Llvm.build_store v value_p builder)
-      )
+    | Some (v, ty) -> ignore (env_store_value new_env v ty)
     | None -> ()
   );
   new_env
@@ -365,16 +368,21 @@ let rec gen_exp e env depth = match e with
         Llvm.build_phi incoming "iftmp" builder
     )
 
-  | Exp.ListEmpty -> Llvm.const_null @@ ptr i8_t
+  | Exp.ListEmpty -> let cn = Llvm.const_null @@ ptr @@ lltype_of @@ ast_type e in
+    (* Printf.printf "ListEmpty: %s (%s)\n" (Llvm.string_of_lltype @@ Llvm.type_of cn) (Type.string_of_type @@ ast_type e);
+       flush stdout; *)
+    cn
   | Exp.ListCons(head, tail) ->
+    Printf.printf "cons: list_t = (%s)\n" (Type.string_of_type @@ ast_type e);
+    Printf.printf "tail: (%s)\n" (Type.string_of_type @@ ast_type tail);
+    Printf.printf "head: (%s)\n" (Type.string_of_type @@ ast_type head);
+    flush stdout;
     let list_t = lltype_of @@ ast_type e in
     let head_v = gen_exp head env depth in
-    let tail_v =
-      let p = gen_exp tail env depth in
-      match tail with
-      | Exp.ListEmpty -> Llvm.build_pointercast p (ptr list_t) "tail_v" builder
-      | _ -> p in
+    let tail_v = gen_exp tail env depth in
     let cons_p = build_gcmalloc_obj list_t "cons" builder in
+
+
     list_store_head cons_p head_v (ast_type head);
     list_store_tail cons_p tail_v (ast_type head);
     cons_p
@@ -407,15 +415,14 @@ let rec gen_exp e env depth = match e with
       try
         let d = Hashtbl.find env_depth name in
         let args = [|env; Llvm.const_int int64_t (depth - d)|] in
-        let target_env = Llvm.build_call climbup_env_func args "&target_env" builder in
+        let target_env = Llvm.build_call climbup_env_func args ("&" ^ name ^"_target_env") builder in
         env_load_value target_env @@ ast_type e
       with Not_found ->
         failwith @@ Printf.sprintf "unbound value: %s" name
     )
   | Exp.Let(name, e1, e2) ->
     let v1 = gen_exp e1 env depth in
-    let new_env = build_env env None in
-    ignore (env_store_value new_env v1 @@ ast_type e1);
+    let new_env = build_env env @@ Some (v1, ast_type e1) in
 
     Hashtbl.add env_depth name (depth + 1);
     let v2 = gen_exp e2 new_env (depth + 1) in
@@ -423,10 +430,9 @@ let rec gen_exp e env depth = match e with
     v2
 
   | Exp.Fun(arg, body) ->
-    let new_env = build_env env None in
     let closure = build_gcmalloc_obj closure_t "closure" builder in
     let closure_env = Llvm.build_struct_gep closure 0 "closure.env" builder in
-    ignore (Llvm.build_store new_env closure_env builder);
+    ignore (Llvm.build_store env closure_env builder);
 
     let current_bb = Llvm.insertion_block builder in
     Hashtbl.add env_depth arg (depth + 1);
@@ -458,19 +464,66 @@ let rec gen_exp e env depth = match e with
     ignore (Llvm.build_store fun_addr fun_ptr builder);
     closure
 
+  | Exp.LetRec(funname, argname, body, e) -> (
+      let fun_env = build_env env None in
+      Hashtbl.add env_depth funname (depth + 1);
+
+      (
+        let closure = build_gcmalloc_obj closure_t "closure" builder in
+        let closure_env = Llvm.build_struct_gep closure 0 "closure.env" builder in
+        ignore (Llvm.build_store env closure_env builder);
+
+        let current_bb = Llvm.insertion_block builder in
+        Hashtbl.add env_depth argname (depth + 2);
+
+        let f =
+          let fun_ty =
+            let ret_ty = handling_lltype_of @@ ast_type body in
+            Llvm.function_type ret_ty [|ptr env_t|] in
+          let fun_name = "closure_" ^ (string_of_int !closure_count) in
+          closure_count := !closure_count + 1;
+          Llvm.declare_function fun_name fun_ty the_module in
+
+        let fun_ptr = Llvm.build_struct_gep closure 1 "closure.fun_ptr" builder in
+        let fun_addr = Llvm.build_pointercast f (ptr i8_t) "closure.fun_addr"builder in
+        ignore (Llvm.build_store fun_addr fun_ptr builder);
+
+        let entry_bb = Llvm.append_block context "entry" f in
+        let arg_env = (Llvm.params f).(0) in
+
+        Llvm.position_at_end entry_bb builder; (
+          let ret = gen_exp body arg_env (depth + 2) in
+          if Llvm.type_of ret = void_t then
+            ignore (Llvm.build_ret_void builder)
+          else
+            ignore (Llvm.build_ret ret builder)
+        );
+
+        Llvm.position_at_end current_bb builder;
+        Hashtbl.remove env_depth argname;
+
+        ignore (env_store_value fun_env closure @@ Type.TArrow(Type.TUnit, Type.TUnit));
+      );
+
+      let v = gen_exp e fun_env (depth + 1) in
+      Hashtbl.remove env_depth funname;
+      v
+    )
+
   | Exp.App(f, e) ->
     let arg = gen_exp e env depth in
     let closure = gen_exp f env depth in
     let clos_env_p = Llvm.build_struct_gep closure 0 "closure.env_p" builder in
     let clos_env = Llvm.build_load clos_env_p "closure.env" builder in
-    ignore (env_store_value clos_env arg @@ ast_type e);
+
+    let new_env = build_env clos_env (Some (arg, ast_type e)) in 
     let clos_fun_p = Llvm.build_struct_gep closure 1 "closure.fun_p" builder in
     let clos_fun_addr = Llvm.build_load clos_fun_p "closure.fun_addr" builder in
     let fun_type = match ast_type f with
       | TArrow(_, t) -> Llvm.function_type (handling_lltype_of t) [|ptr env_t|]
       | _ -> failwith "type error" in
     let clos_fun = Llvm.build_pointercast clos_fun_addr (ptr fun_type) "closure.fun" builder in
-    Llvm.build_call clos_fun [|clos_env|] "" builder
+    Llvm.build_call clos_fun [|new_env|] "" builder
 
   | _ -> failwith "gen_exp: unimplemented"
 

@@ -93,10 +93,7 @@ let new_typevar n =
 let type_info : Type.ty Exp.ExpHash.t = Exp.ExpHash.create 256
 
 let update_type_info theta =
-  Exp.ExpHash.iter (fun k v ->
-      let final_ty = subst_ty theta v in
-      Exp.ExpHash.replace type_info k final_ty
-    ) type_info
+  Exp.ExpHash.filter_map_inplace (fun _ v -> Some(subst_ty theta v)) type_info
 
 (* tinf : tyenv -> exp -> int -> tyenv * ty * tysubst * int *)
 let rec tinf te e n =
