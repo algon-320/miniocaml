@@ -5,7 +5,7 @@ type value =
   | VBool of bool
   | VUnit
   | VList of value list
-  | VClos of string * string * exp * (string * value) list
+  | VClos of string * string * ast_node * (string * value) list
   | VCont of (value -> value)
 
 let rec string_of_value v =
@@ -22,9 +22,9 @@ let rec string_of_value v =
     in Printf.sprintf "[%s]" (str_of_list l)
   | VClos(name, arg, body, e) ->
     if name = "$" then
-      Printf.sprintf "{fun %s -> %s [%s]}" arg (string_of_exp body) (string_of_env e)
+      Printf.sprintf "{fun %s -> %s [%s]}" arg (string_of_exp @@ take_exp body) (string_of_env e)
     else
-      Printf.sprintf "{rec-fun %s: %s -> %s [%s]}" name arg (string_of_exp body) (string_of_env e)
+      Printf.sprintf "{rec-fun %s: %s -> %s [%s]}" name arg (string_of_exp @@ take_exp body) (string_of_env e)
   | VCont(_) ->
     Printf.sprintf "{continuation}"
   | VUnit ->
@@ -34,3 +34,14 @@ and string_of_env env =
   | [] -> ""
   | h::t -> let (name, value) = h in
     Printf.sprintf "(%s:%s),%s" name (string_of_value value) (string_of_env t)
+
+(* ノードIDを無視した比較 *)
+let rec equal value1 value2 =
+  match value1, value2 with
+  | VList(l1), VList(l2) ->
+    (try List.for_all2 equal l1 l2 with Invalid_argument _ -> false)
+  | VClos(f1, a1, b1, e1), VClos(f2, a2, b2, e2) ->
+    (f1 = f2) && (a1 = a2) && (b1 === b2) &&
+    (List.for_all2 (fun (n1, a1) (n2, a2) -> (n1 = n2) && (equal a1 a2)) e1 e2)
+  | x, y when x = y -> true
+  | _ -> false

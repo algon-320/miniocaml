@@ -60,10 +60,10 @@ let compile filename options =
         Tinf.update_type_info theta;
         ast
       | None ->
-        Exp.UnitLit
+        Exp.new_node @@ Exp.UnitLit
     in
 
-    (* Exp.ExpHash.iter (fun k v -> Printf.printf "[%s] => [%s]\n" (Exp.string_of_exp k) (Type.string_of_type v)) Tinf.type_info;
+    (* Hashtbl.iter (fun k v -> Printf.printf "[%s] => [%s]\n" (string_of_int k) (Type.string_of_type v)) Tinf.type_info;
        flush stdout; *)
     (* Printf.printf "%s\n" @@ Exp.string_of_exp ast;
        flush stdout; *)

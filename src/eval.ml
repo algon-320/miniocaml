@@ -42,7 +42,7 @@ let rec eval e env cont =
             | (x, y) -> failwith (Printf.sprintf "%s: wrong arguments: left=%s, right=%s" name (string_of_value x) (string_of_value y))
           ))
   in
-  match e with
+  match take_exp e with
   | IntLit(n)     -> cont (VInt(n))
   | BoolLit(n)    -> cont (VBool(n))
   | UnitLit       -> cont VUnit
@@ -65,7 +65,7 @@ let rec eval e env cont =
 
   | Let(x, e1, e2) -> eval e1 env (fun body -> eval e2 (ext env x body) cont)
   | LetRec(f, x, e1, e2) -> eval e2 (ext env f (VClos (f, x, e1, env))) cont
-  | Fun(e1, e2) -> cont (VClos("$", e1, e2, env))
+  | Fun(argname, e1) -> cont (VClos("$", argname, e1, env))
   | App(e1, e2) ->
     eval e2 env (fun arg ->
         eval e1 env (fun f ->
@@ -155,14 +155,14 @@ let rec eval e env cont =
   | CallCC(e) ->
     eval e env (fun func_val -> apply func_val (VCont cont) cont)
 
-  | OpAdd -> cont (VClos("$", "l", Fun("r", Add(Var("l"), Var("r"))), (emptyenv ())))
-  | OpSub -> cont (VClos("$", "l", Fun("r", Sub(Var("l"), Var("r"))), (emptyenv ())))
-  | OpMul -> cont (VClos("$", "l", Fun("r", Mul(Var("l"), Var("r"))), (emptyenv ())))
-  | OpDiv -> cont (VClos("$", "l", Fun("r", Div(Var("l"), Var("r"))), (emptyenv ())))
-  | OpEq  -> cont (VClos("$", "l", Fun("r", Eq(Var("l"),  Var("r"))), (emptyenv ())))
-  | OpNe  -> cont (VClos("$", "l", Fun("r", Ne(Var("l"),  Var("r"))), (emptyenv ())))
-  | OpGt  -> cont (VClos("$", "l", Fun("r", Gt(Var("l"),  Var("r"))), (emptyenv ())))
-  | OpLt  -> cont (VClos("$", "l", Fun("r", Lt(Var("l"),  Var("r"))), (emptyenv ())))
+  | OpAdd -> cont (VClos("$", "l", (new_node @@ Fun("r", (new_node @@ Add(new_node @@ Var "l", new_node @@ Var "r")))), (emptyenv ())))
+  | OpSub -> cont (VClos("$", "l", (new_node @@ Fun("r", (new_node @@ Sub(new_node @@ Var "l", new_node @@ Var "r")))), (emptyenv ())))
+  | OpMul -> cont (VClos("$", "l", (new_node @@ Fun("r", (new_node @@ Mul(new_node @@ Var "l", new_node @@ Var "r")))), (emptyenv ())))
+  | OpDiv -> cont (VClos("$", "l", (new_node @@ Fun("r", (new_node @@ Div(new_node @@ Var "l", new_node @@ Var "r")))), (emptyenv ())))
+  | OpEq  -> cont (VClos("$", "l", (new_node @@ Fun("r", (new_node @@ Eq(new_node @@ Var "l", new_node @@ Var "r")))), (emptyenv ())))
+  | OpNe  -> cont (VClos("$", "l", (new_node @@ Fun("r", (new_node @@ Ne(new_node @@ Var "l", new_node @@ Var "r")))), (emptyenv ())))
+  | OpGt  -> cont (VClos("$", "l", (new_node @@ Fun("r", (new_node @@ Gt(new_node @@ Var "l", new_node @@ Var "r")))), (emptyenv ())))
+  | OpLt  -> cont (VClos("$", "l", (new_node @@ Fun("r", (new_node @@ Lt(new_node @@ Var "l", new_node @@ Var "r")))), (emptyenv ())))
 
 and apply f arg cont =
   match f with

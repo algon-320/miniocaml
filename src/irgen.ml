@@ -84,12 +84,6 @@ let list_store_tail list value content_ty =
     else
       Llvm.build_struct_gep list 1 "list.tail_p" builder
   in
-
-  (* Printf.printf "list_store_tail: list = %s (%s)\n" (Llvm.string_of_lltype @@ Llvm.type_of list)  (Llvm.value_name list);
-     Printf.printf "list_store_tail: tail_p = %s (%s)\n" (Llvm.string_of_lltype @@ Llvm.type_of tail_p) (Llvm.value_name tail_p);
-     Printf.printf "list_store_tail: value = %s (%s)\n" (Llvm.string_of_lltype @@ Llvm.type_of value) (Llvm.value_name value);
-     flush stdout; *)
-
   ignore (Llvm.build_store value tail_p builder)
 let list_load_tail list content_ty =
   let tail_p =
@@ -128,7 +122,7 @@ let climbup_env_func =
 
   f
 
-let ast_type e = Exp.ExpHash.find Tinf.type_info e
+let ast_type node = Hashtbl.find Tinf.type_info @@ Exp.take_id node
 
 let global_constants : (Llvm.llvalue, Llvm.llvalue) Hashtbl.t = Hashtbl.create 256
 let get_global_constant const =
@@ -317,7 +311,8 @@ let build_env parent value =
 
 let closure_count = ref 0
 
-let rec gen_exp e env depth = match e with
+let rec gen_exp node env depth =
+  match Exp.take_exp node with
   | Exp.IntLit(n) -> Llvm.const_int int64_t n
   | Exp.BoolLit(b) -> Llvm.const_int bool_t (int_of_bool b)
   | Exp.UnitLit -> Llvm.undef void_t
@@ -360,7 +355,7 @@ let rec gen_exp e env depth = match e with
 
     Llvm.position_at_end merge_bb builder;
     (
-      match ast_type e with
+      match ast_type node with
       | Type.TUnit ->
         Llvm.undef void_t
       | _ ->
@@ -368,30 +363,21 @@ let rec gen_exp e env depth = match e with
         Llvm.build_phi incoming "iftmp" builder
     )
 
-  | Exp.ListEmpty -> let cn = Llvm.const_null @@ ptr @@ lltype_of @@ ast_type e in
-    (* Printf.printf "ListEmpty: %s (%s)\n" (Llvm.string_of_lltype @@ Llvm.type_of cn) (Type.string_of_type @@ ast_type e);
-       flush stdout; *)
-    cn
+  | Exp.ListEmpty -> Llvm.const_null @@ ptr @@ lltype_of @@ ast_type node
   | Exp.ListCons(head, tail) ->
-    Printf.printf "cons: list_t = (%s)\n" (Type.string_of_type @@ ast_type e);
-    Printf.printf "tail: (%s)\n" (Type.string_of_type @@ ast_type tail);
-    Printf.printf "head: (%s)\n" (Type.string_of_type @@ ast_type head);
-    flush stdout;
-    let list_t = lltype_of @@ ast_type e in
+    let list_t = lltype_of @@ ast_type node in
     let head_v = gen_exp head env depth in
     let tail_v = gen_exp tail env depth in
     let cons_p = build_gcmalloc_obj list_t "cons" builder in
-
-
     list_store_head cons_p head_v (ast_type head);
     list_store_tail cons_p tail_v (ast_type head);
     cons_p
   | Exp.ListHead(lst) ->
     let cons_p = gen_exp lst env depth in
-    list_load_head cons_p @@ ast_type e
+    list_load_head cons_p @@ ast_type node
   | Exp.ListTail(lst) ->
     let cons_p = gen_exp lst env depth in
-    let content_ty = match ast_type e with
+    let content_ty = match ast_type node with
       | Type.TList(ct) -> ct
       | _ -> failwith "type error"
     in
@@ -416,7 +402,7 @@ let rec gen_exp e env depth = match e with
         let d = Hashtbl.find env_depth name in
         let args = [|env; Llvm.const_int int64_t (depth - d)|] in
         let target_env = Llvm.build_call climbup_env_func args ("&" ^ name ^"_target_env") builder in
-        env_load_value target_env @@ ast_type e
+        env_load_value target_env @@ ast_type node
       with Not_found ->
         failwith @@ Printf.sprintf "unbound value: %s" name
     )
@@ -471,7 +457,7 @@ let rec gen_exp e env depth = match e with
       (
         let closure = build_gcmalloc_obj closure_t "closure" builder in
         let closure_env = Llvm.build_struct_gep closure 0 "closure.env" builder in
-        ignore (Llvm.build_store env closure_env builder);
+        ignore (Llvm.build_store fun_env closure_env builder);
 
         let current_bb = Llvm.insertion_block builder in
         Hashtbl.add env_depth argname (depth + 2);
@@ -513,7 +499,7 @@ let rec gen_exp e env depth = match e with
   | Exp.App(f, e) ->
     let arg = gen_exp e env depth in
     let closure = gen_exp f env depth in
-    let clos_env_p = Llvm.build_struct_gep closure 0 "closure.env_p" builder in
+    let clos_env_p = Llvm.build_struct_gep closure 0 "&closure.env" builder in
     let clos_env = Llvm.build_load clos_env_p "closure.env" builder in
 
     let new_env = build_env clos_env (Some (arg, ast_type e)) in 

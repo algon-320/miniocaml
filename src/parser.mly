@@ -65,7 +65,7 @@ open Exp
 %left VAR INT TRUE FALSE LPAREN LBRACKET
 
 %start main
-%type <Exp.exp option> main
+%type <Exp.ast_node option> main
 
 %%
 
@@ -79,31 +79,31 @@ main:
 
 // リストリテラル
 list_inner:
-  | arg_exp { ListCons($1, ListEmpty) }
-  | arg_exp SEMICOL { ListCons($1, ListEmpty) }
-  | arg_exp SEMICOL list_inner { ListCons($1, $3) }
+  | arg_exp { new_node @@ ListCons($1, new_node @@ ListEmpty) }
+  | arg_exp SEMICOL { new_node @@ ListCons($1, new_node @@ ListEmpty) }
+  | arg_exp SEMICOL list_inner { new_node @@ ListCons($1, $3) }
 
 // 関数の引数になれる式
 arg_exp:
-  | VAR   { Var $1 }
-  | INT   { IntLit $1 }
-  | TRUE  { BoolLit true }
-  | FALSE { BoolLit false }
+  | VAR   { new_node @@ Var $1 }
+  | INT   { new_node @@ IntLit $1 }
+  | TRUE  { new_node @@ BoolLit true }
+  | FALSE { new_node @@ BoolLit false }
 
-  | LPAREN RPAREN { UnitLit }
+  | LPAREN RPAREN { new_node @@ UnitLit }
   
   // 演算子を関数として使う
-  | LPAREN PLUS RPAREN { OpAdd } 
-  | LPAREN MINUS RPAREN { OpSub } 
-  | LPAREN ASTERISK RPAREN { OpMul } 
-  | LPAREN SLASH RPAREN { OpDiv } 
-  | LPAREN EQUAL RPAREN { OpEq } 
-  | LPAREN NOTEQUAL RPAREN { OpEq } 
-  | LPAREN GREATER RPAREN { OpGt } 
-  | LPAREN LESS RPAREN { OpLt } 
+  | LPAREN PLUS RPAREN { new_node @@ OpAdd }
+  | LPAREN MINUS RPAREN { new_node @@ OpSub }
+  | LPAREN ASTERISK RPAREN { new_node @@ OpMul }
+  | LPAREN SLASH RPAREN { new_node @@ OpDiv }
+  | LPAREN EQUAL RPAREN { new_node @@ OpEq }
+  | LPAREN NOTEQUAL RPAREN { new_node @@ OpEq }
+  | LPAREN GREATER RPAREN { new_node @@ OpGt }
+  | LPAREN LESS RPAREN { new_node @@ OpLt }
   
   // リスト
-  | LBRACKET RBRACKET { ListEmpty }
+  | LBRACKET RBRACKET { new_node @@ ListEmpty }
   | LBRACKET list_inner RBRACKET { $2 }
   
   // 括弧で囲まれた式
@@ -115,55 +115,55 @@ arg_exp:
 exp:
   | arg_exp { $1 }
   // 関数適用 (e1 e2)
-  | exp arg_exp %prec APP { App ($1, $2) }
+  | exp arg_exp %prec APP { new_node @@ App ($1, $2) }
   // 符号の反転 -e
-  | MINUS exp %prec UNARY { Sub (IntLit 0, $2) }
+  | MINUS exp %prec UNARY { new_node @@ Sub (new_node @@ IntLit 0, $2) }
   // e1 + e2
-  | exp PLUS exp { Add ($1, $3) }
+  | exp PLUS exp { new_node @@ Add ($1, $3) }
   // e1 - e2
-  | exp MINUS exp { Sub ($1, $3) }
+  | exp MINUS exp { new_node @@ Sub ($1, $3) }
   // e1 * e2
-  | exp ASTERISK exp { Mul ($1, $3) }
+  | exp ASTERISK exp { new_node @@ Mul ($1, $3) }
   // e1 / e2
-  | exp SLASH exp { Div ($1, $3) }
+  | exp SLASH exp { new_node @@ Div ($1, $3) }
   // e1 = e2
-  | exp EQUAL exp { Eq ($1, $3) }
+  | exp EQUAL exp { new_node @@ Eq ($1, $3) }
   // e1 <> e2
-  | exp NOTEQUAL exp { Ne ($1, $3) }
+  | exp NOTEQUAL exp { new_node @@ Ne ($1, $3) }
   // e1 < e2
-  | exp LESS exp { Lt ($1, $3) }
+  | exp LESS exp { new_node @@ Lt ($1, $3) }
   // e1 > e2
-  | exp GREATER exp { Gt ($1, $3) }
+  | exp GREATER exp { new_node @@ Gt ($1, $3) }
     
   // e1 :: e2
-  | exp COLCOL exp { ListCons ($1, $3) }
+  | exp COLCOL exp { new_node @@ ListCons ($1, $3) }
   // List.hd e
-  | HEAD arg_exp %prec APP { ListHead $2 }
+  | HEAD arg_exp %prec APP { new_node @@ ListHead $2 }
   // List.tl e
-  | TAIL arg_exp %prec APP { ListTail $2 }
+  | TAIL arg_exp %prec APP { new_node @@ ListTail $2 }
   
   // fun x -> e
-  | FUN VAR ARROW exp { Fun ($2, $4) }
+  | FUN VAR ARROW exp { new_node @@ Fun ($2, $4) }
   
   // call/cc k -> e
-  | CALLCC exp %prec APP { CallCC($2) }
+  | CALLCC exp %prec APP { new_node @@ CallCC($2) }
   
   // let x = e1 in e2
-  | LET VAR EQUAL exp IN exp %prec LET_IN { Let ($2, $4, $6) }
+  | LET VAR EQUAL exp IN exp %prec LET_IN { new_node @@ Let ($2, $4, $6) }
   // let rec f x = e1 in e2
-  | LET REC VAR VAR EQUAL exp IN exp %prec LET_IN { LetRec ($3, $4, $6, $8) }
+  | LET REC VAR VAR EQUAL exp IN exp %prec LET_IN { new_node @@ LetRec ($3, $4, $6, $8) }
   
   // if e1 then e2 else e3
-  | IF exp THEN exp ELSE exp { If ($2, $4, $6) }
+  | IF exp THEN exp ELSE exp { new_node @@ If ($2, $4, $6) }
   
   // match e with ...
-  | MATCH exp WITH cases_rev { Match ($2, List.rev $4) }
+  | MATCH exp WITH cases_rev { new_node @@ Match ($2, List.rev $4) }
 
   // Skip
-  | exp SEMICOL exp { Skip ($1, $3) }
+  | exp SEMICOL exp { new_node @@ Skip ($1, $3) }
 
   // Print
-  | PRINT arg_exp %prec APP { Print ($2) }
+  | PRINT arg_exp %prec APP { new_node @@ Print ($2) }
 
   | error
     { 
@@ -193,13 +193,13 @@ pattern:
   | VAR
     { WildcardPat($1) }
   | INT
-    { LiteralPat(IntLit $1) }
+    { LiteralPat(new_node @@ IntLit $1) }
   | TRUE
-    { LiteralPat(BoolLit true) }
+    { LiteralPat(new_node @@ BoolLit true) }
   | FALSE
-    { LiteralPat(BoolLit false) }
+    { LiteralPat(new_node @@ BoolLit false) }
   | LBRACKET RBRACKET
-    { LiteralPat(ListEmpty) }
+    { LiteralPat(new_node @@ ListEmpty) }
   | LBRACKET list_inner RBRACKET
     { LiteralPat($2) }
   | pattern COLCOL pattern

@@ -90,13 +90,14 @@ let new_typevar n =
   (TVar ("'a" ^ (string_of_int n)), n+1)
 
 (* ASTのノード→型 *)
-let type_info : Type.ty Exp.ExpHash.t = Exp.ExpHash.create 256
+let type_info : (int, Type.ty) Hashtbl.t = Hashtbl.create 256
 
 let update_type_info theta =
-  Exp.ExpHash.filter_map_inplace (fun _ v -> Some(subst_ty theta v)) type_info
+  Hashtbl.filter_map_inplace (fun _ v -> Some(subst_ty theta v)) type_info
 
 (* tinf : tyenv -> exp -> int -> tyenv * ty * tysubst * int *)
 let rec tinf te e n =
+  let Node(e, node_id) = e in
   let result = (
     match e with
     | Var(s) ->
@@ -156,17 +157,19 @@ let rec tinf te e n =
       let theta3 = compose_subst theta2 theta1 in
       (te2, t3, theta3, n2)
     | Let(x, e1, e2) ->
-      tinf te (App(Fun(x, e2), e1)) n
+      tinf te (new_node @@ App(new_node @@ Fun(x, e2), e1)) n
     | LetRec(f, x, e1, e2) ->
       let (tx, n) = new_typevar n in
       let (tf, n) = new_typevar n in
       let te = ext (ext te x tx) f tf in
       let (te, t1, theta1, n) = tinf te e1 n in
-      let tx2 = subst_ty theta1 tx in
-      let theta2 = unify [(tf, TArrow(tx2, t1))] in
+      let tx = subst_ty theta1 tx in
+      let tf = subst_ty theta1 tf in
+      let theta2 = unify [(tf, TArrow(tx, t1))] in
+      let te = remove te x in
       let te = subst_tyenv theta2 te in
       let (te, t2, theta3, n) = tinf te e2 n in
-      let te = remove (remove te f) x in
+      let te = remove te f in
       let theta123 = compose_subst theta3 @@ compose_subst theta2 theta1 in
       (te, t2, theta123, n)
 
@@ -247,7 +250,7 @@ let rec tinf te e n =
     | OpEq | OpNe | OpGt | OpLt ->
       (te, TArrow(TInt, TArrow(TInt, TBool)), theta0, n)
   ) in
-  let (_, t, th, _) = result in Exp.ExpHash.add type_info e (subst_ty th t);
+  let (_, t, th, _) = result in Hashtbl.add type_info node_id (subst_ty th t);
   result
 
 and tinf_pat_arm te (pat, e) n =
