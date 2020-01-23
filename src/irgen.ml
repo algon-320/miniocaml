@@ -14,15 +14,16 @@ let i8_t = Llvm.i8_type context
 let i32_t = Llvm.i32_type context
 let i64_t = Llvm.i64_type context
 let bool_t = Llvm.i1_type context
+let voidptr_t = ptr i8_t
 
 let env_t =
   let t = Llvm.named_struct_type context "env_t" in
-  Llvm.struct_set_body t [|ptr t; ptr i8_t|] false;
+  Llvm.struct_set_body t [|ptr t; voidptr_t|] false;
   t
 
 let closure_t =
   let t = Llvm.named_struct_type context "closure_t" in
-  Llvm.struct_set_body t [|ptr env_t; ptr i8_t|] false;
+  Llvm.struct_set_body t [|ptr env_t; voidptr_t|] false;
   t
 
 let rec typeid_string = function
@@ -30,9 +31,9 @@ let rec typeid_string = function
   | Type.TBool -> "bool"
   | Type.TList(ct) -> (typeid_string ct) ^ "_list"
   | Type.TUnit -> "unit"
-  | Type.TArrow(t1, t2) -> Printf.sprintf "arrow_%s_to_%s" (typeid_string t1) (typeid_string t2)
+  | Type.TArrow(t1, t2) ->
+    Printf.sprintf "arrow_%s_to_%s" (typeid_string t1) (typeid_string t2)
   | Type.TVar(_) -> failwith "typeid_string: TVar unimplemented"
-  | _ -> failwith "typeid_string: unimplemented"
 
 (* content_tyを要素に持つリストの型 *)
 let list_types : (Type.ty, Llvm.lltype) Hashtbl.t = Hashtbl.create 10
@@ -134,10 +135,10 @@ let get_global_constant const =
     gv
 let get_global_constant_string str =
   let v = get_global_constant @@ Llvm.const_stringz context str in
-  Llvm.build_pointercast v (ptr i8_t) "" builder
+  Llvm.build_pointercast v voidptr_t "" builder
 
 let printf =
-  let printf_type = Llvm.var_arg_function_type void_t [|(ptr i8_t)|] in
+  let printf_type = Llvm.var_arg_function_type void_t [|voidptr_t|] in
   Llvm.declare_function "printf" printf_type the_module
 
 let printers : (Type.ty, Llvm.llvalue) Hashtbl.t = Hashtbl.create 10
@@ -262,7 +263,7 @@ let gcinit =
   let gcinit_type = Llvm.function_type void_t [||] in
   Llvm.declare_function "GC_init" gcinit_type the_module
 let gcmalloc =
-  let gcmalloc_type = Llvm.function_type (ptr i8_t) [|Llvm.i64_type context|] in
+  let gcmalloc_type = Llvm.function_type voidptr_t [|Llvm.i64_type context|] in
   Llvm.declare_function "GC_malloc" gcmalloc_type the_module
 let build_gcmalloc size ret_type name builder =
   let p = Llvm.build_call gcmalloc [|size|] name builder in
@@ -283,7 +284,7 @@ let env_store_value env value ty =
       value
   in
   let value_p = Llvm.build_struct_gep env 1 "&env.value" builder in
-  let addr = Llvm.build_pointercast value (ptr i8_t) "(i8*)" builder in
+  let addr = Llvm.build_pointercast value voidptr_t "(i8*)" builder in
   Llvm.build_store addr value_p builder
 
 (* load value from env *)
@@ -446,7 +447,7 @@ let rec gen_exp node env depth =
     Hashtbl.remove env_depth arg;
 
     let fun_ptr = Llvm.build_struct_gep closure 1 "closure.fun_ptr" builder in
-    let fun_addr = Llvm.build_pointercast f (ptr i8_t) "closure.fun_addr"builder in
+    let fun_addr = Llvm.build_pointercast f voidptr_t "closure.fun_addr" builder in
     ignore (Llvm.build_store fun_addr fun_ptr builder);
     closure
 
@@ -523,13 +524,15 @@ let gen_main e =
   Llvm.position_at_end entry_bb builder;
   try
     ignore (Llvm.build_call gcinit [||] "" builder);
-    let v = gen_exp e (Llvm.const_null (ptr env_t)) 0 in
-    if Llvm.type_of v = i64_t then
-      let ret = Llvm.build_trunc v i32_t "tmp" builder in
-      ignore (Llvm.build_ret ret builder)
-    else
-      ignore (Llvm.build_ret (Llvm.const_int i32_t 0) builder)
-    ;
+    let v = gen_exp e (Llvm.const_null @@ ptr env_t) 0 in
+    (
+      if Llvm.type_of v = i64_t then
+        let ret = Llvm.build_trunc v i32_t "tmp" builder in
+        ignore (Llvm.build_ret ret builder)
+      else
+        let zero = Llvm.const_int i32_t 0 in
+        ignore (Llvm.build_ret zero builder)
+    );
     Llvm_analysis.assert_valid_function the_function;
     the_function
   with e ->
