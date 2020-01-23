@@ -11,8 +11,8 @@ let int_of_bool b = if b then 1 else 0
 (* types *)
 let void_t = Llvm.void_type context
 let i8_t = Llvm.i8_type context
-let int32_t = Llvm.i32_type context
-let int64_t = Llvm.i64_type context
+let i32_t = Llvm.i32_type context
+let i64_t = Llvm.i64_type context
 let bool_t = Llvm.i1_type context
 
 let env_t =
@@ -51,7 +51,7 @@ let rec get_list_type content_ty =
     t
 
 and lltype_of = function
-  | Type.TInt -> int64_t
+  | Type.TInt -> i64_t
   | Type.TBool -> bool_t
   | Type.TUnit -> void_t
   | Type.TList(t) -> get_list_type t
@@ -95,7 +95,7 @@ let list_load_tail list content_ty =
 
 (* TODO: make it to simple while loop *)
 let climbup_env_func =
-  let fun_ty = Llvm.function_type (ptr env_t) [|ptr env_t; int64_t|] in
+  let fun_ty = Llvm.function_type (ptr env_t) [|ptr env_t; i64_t|] in
   let f = Llvm.declare_function "climbup_env" fun_ty the_module in
   let env = (Llvm.params f).(0) in
   let cnt = (Llvm.params f).(1) in
@@ -104,7 +104,7 @@ let climbup_env_func =
   let else_bb = Llvm.append_block context "else" f in
 
   Llvm.position_at_end entry_bb builder; (
-    let cond = Llvm.build_icmp Llvm.Icmp.Eq cnt (Llvm.const_int int64_t 0) "if_zero" builder in
+    let cond = Llvm.build_icmp Llvm.Icmp.Eq cnt (Llvm.const_int i64_t 0) "if_zero" builder in
     ignore (Llvm.build_cond_br cond then_bb else_bb builder)
   );
 
@@ -115,7 +115,7 @@ let climbup_env_func =
   Llvm.position_at_end else_bb builder; (
     let parent_env_p = Llvm.build_struct_gep env 0 "env_parent_p" builder in
     let parent_env = Llvm.build_load parent_env_p "env_parent" builder in
-    let pred_cnt = Llvm.build_sub cnt (Llvm.const_int int64_t 1) "pred_cnt" builder in
+    let pred_cnt = Llvm.build_sub cnt (Llvm.const_int i64_t 1) "pred_cnt" builder in
     let ret = Llvm.build_call f [|parent_env; pred_cnt|] "ret" builder in
     ignore (Llvm.build_ret ret builder)
   );
@@ -160,7 +160,7 @@ let rec get_printer t =
           f
         )
       | Type.TInt -> (
-          let fun_ty = Llvm.function_type void_t [|int64_t|] in
+          let fun_ty = Llvm.function_type void_t [|i64_t|] in
           let f = Llvm.declare_function "int_printer" fun_ty the_module in
           let v = (Llvm.params f).(0) in
           let entry_bb = Llvm.append_block context "entry" f in
@@ -313,7 +313,7 @@ let closure_count = ref 0
 
 let rec gen_exp node env depth =
   match Exp.take_exp node with
-  | Exp.IntLit(n) -> Llvm.const_int int64_t n
+  | Exp.IntLit(n) -> Llvm.const_int i64_t n
   | Exp.BoolLit(b) -> Llvm.const_int bool_t (int_of_bool b)
   | Exp.UnitLit -> Llvm.undef void_t
   | Exp.Add(e1, e2) ->
@@ -400,7 +400,7 @@ let rec gen_exp node env depth =
   | Exp.Var(name) -> (
       try
         let d = Hashtbl.find env_depth name in
-        let args = [|env; Llvm.const_int int64_t (depth - d)|] in
+        let args = [|env; Llvm.const_int i64_t (depth - d)|] in
         let target_env = Llvm.build_call climbup_env_func args ("&" ^ name ^"_target_env") builder in
         env_load_value target_env @@ ast_type node
       with Not_found ->
@@ -514,7 +514,7 @@ let rec gen_exp node env depth =
   | _ -> failwith "gen_exp: unimplemented"
 
 let gen_main e =
-  let fun_ty = Llvm.function_type int32_t [||] in
+  let fun_ty = Llvm.function_type i32_t [||] in
   let the_function = match Llvm.lookup_function "main" the_module with
     | None -> Llvm.declare_function "main" fun_ty the_module
     | Some _ -> failwith "the function has already been decleared"
@@ -524,11 +524,11 @@ let gen_main e =
   try
     ignore (Llvm.build_call gcinit [||] "" builder);
     let v = gen_exp e (Llvm.const_null (ptr env_t)) 0 in
-    if Llvm.type_of v = int64_t then
-      let ret = Llvm.build_trunc v int32_t "tmp" builder in
+    if Llvm.type_of v = i64_t then
+      let ret = Llvm.build_trunc v i32_t "tmp" builder in
       ignore (Llvm.build_ret ret builder)
     else
-      ignore (Llvm.build_ret (Llvm.const_int int32_t 0) builder)
+      ignore (Llvm.build_ret (Llvm.const_int i32_t 0) builder)
     ;
     Llvm_analysis.assert_valid_function the_function;
     the_function
