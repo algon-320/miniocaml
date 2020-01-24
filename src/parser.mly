@@ -198,6 +198,8 @@ pattern:
     { LiteralPat(new_node @@ BoolLit true) }
   | FALSE
     { LiteralPat(new_node @@ BoolLit false) }
+  | LPAREN RPAREN
+    { LiteralPat(new_node @@ UnitLit) }
   | LBRACKET RBRACKET
     { LiteralPat(new_node @@ ListEmpty) }
   | LBRACKET list_inner RBRACKET
