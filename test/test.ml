@@ -19,10 +19,18 @@ let assert_value_eq line actual expected =
 let assert_type_eq line actual expected =
   assert_eq line actual expected (=) Type.string_of_type
 
+let unwrap op =
+  match op with
+  | Some x -> x
+  | None -> failwith "unwrap: invalid argument"
+
 let test line str (exp:Exp.ast_node) value ty =
-  let act_exp = Main.parse str in
-  let act_val = Main.eval str in
-  let act_ty = Main.tinf str in
+  let parse_str str = Parser_wrapper.parse @@ Lexing.from_string str in
+  let tinf str = Tinf.rename_typevar @@ Tinf.get_type @@ unwrap @@ parse_str str in
+
+  let act_exp = unwrap @@ parse_str str in
+  let act_val = Eval.eval (unwrap @@ parse_str str) (Eval.emptyenv ()) Eval.ident_cont in
+  let act_ty = tinf str in
   assert_exp_eq line act_exp exp;
   assert_value_eq line act_val value;
   assert_type_eq line act_ty ty
