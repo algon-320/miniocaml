@@ -19,7 +19,7 @@ let rec repl () =
   print_string "miniocaml # ";
   flush stdout;
   (try
-     let ast = Parser.main Lexer.token (Lexing.from_channel stdin) in
+     let ast = Parser_wrapper.parse @@ Lexing.from_channel stdin in
      match ast with
      | Some ast ->
        let ty = Tinf.rename_typevar @@ Tinf.get_type ast in
@@ -54,7 +54,7 @@ let compile filename options =
     in option_extract options;
 
     let code_str = Std.input_file ~bin:false filename in
-    let ast = match Parser.main Lexer.token (Lexing.from_string code_str) with
+    let ast = match Parser_wrapper.parse @@ Lexing.from_string code_str with
       | Some ast ->
         let (_, _, theta, _) = Tinf.tinf [] ast 0 in
         Tinf.update_type_info theta;

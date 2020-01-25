@@ -169,9 +169,10 @@ exp:
     { 
       let message =
         Printf.sprintf 
-          "parse error near characters %d-%d"
+          "parse error near characters %d-%d (line: %d)"
           (Parsing.symbol_start ())
           (Parsing.symbol_end ())
+          (Parser_state.get_line_number ())
       in
       failwith message
     }

@@ -2,7 +2,7 @@
 open Parser
 }
 
-let space = [' ' '\t' '\n' '\r']
+let space = [' ' '\t' '\r']
 let digit = ['0'-'9']
 let alpha = ['A'-'Z' 'a'-'z' '_']
 let alnum = digit | alpha | '\''
@@ -63,14 +63,16 @@ rule token = parse
 
   (* スペースを読み飛ばす *)
   | space+    { token lexbuf }
+  | '\n' { Parser_state.increment_line_number (); token lexbuf }
 
   | _
     {
       let message = Printf.sprintf
-        "unknown token %s near characters %d-%d"
+        "unknown token %s near characters %d-%d (line: %d)"
         (Lexing.lexeme lexbuf)
         (Lexing.lexeme_start lexbuf)
         (Lexing.lexeme_end lexbuf)
+        (Parser_state.get_line_number ())
       in
       failwith message
     }
