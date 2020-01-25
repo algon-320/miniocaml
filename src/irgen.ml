@@ -146,7 +146,7 @@ let rec get_printer t =
   try
     Hashtbl.find printers t
   with Not_found ->
-    let prev_bb = Llvm.insertion_block builder in
+    let old_bb = Llvm.insertion_block builder in
     let f =
       match t with
       | Type.TUnit -> (
@@ -252,10 +252,102 @@ let rec get_printer t =
             f in
           wrapper
         )
+      | ty -> failwith @@ "get_printer: unimplemented: " ^ (Type.string_of_type ty)
+    in
+    Llvm.position_at_end old_bb builder;
+    Hashtbl.add printers t f;
+    f
+
+let comparators : (Type.ty, Llvm.llvalue) Hashtbl.t = Hashtbl.create 10
+let rec get_comparator t =
+  try
+    Hashtbl.find comparators t
+  with Not_found ->
+    let old_bb = Llvm.insertion_block builder in
+    let f =
+      match t with
+      | Type.TInt -> (
+          let fun_ty = Llvm.function_type bool_t [|i64_t; i64_t|] in
+          let f = Llvm.declare_function "int_comparator" fun_ty the_module in
+          let v1 = (Llvm.params f).(0) in
+          let v2 = (Llvm.params f).(1) in
+          let entry_bb = Llvm.append_block context "entry" f in
+          Llvm.position_at_end entry_bb builder; (
+            let ret = Llvm.build_icmp Llvm.Icmp.Eq v1 v2 "" builder in
+            ignore (Llvm.build_ret ret builder)
+          );
+          f
+        )
+      | Type.TBool -> (
+          let fun_ty = Llvm.function_type bool_t [|bool_t; bool_t|] in
+          let f = Llvm.declare_function "bool_comparator" fun_ty the_module in
+          let v1 = (Llvm.params f).(0) in
+          let v2 = (Llvm.params f).(1) in
+          let entry_bb = Llvm.append_block context "entry" f in
+          Llvm.position_at_end entry_bb builder; (
+            let ret = Llvm.build_icmp Llvm.Icmp.Eq v1 v2 "" builder in
+            ignore (Llvm.build_ret ret builder)
+          );
+          f
+        )
+      | Type.TList(ct) -> (
+          let list_t = lltype_of t in
+          let name = typeid_string t in
+          let fun_ty = Llvm.function_type bool_t [|ptr list_t; ptr list_t|] in
+          let f = Llvm.declare_function (name ^ "_comparator") fun_ty the_module in
+          let v1 = (Llvm.params f).(0) in
+          let v2 = (Llvm.params f).(1) in
+          let entry_bb = Llvm.append_block context "entry" f in
+          let both_null_bb = Llvm.append_block context "both_null" f in
+          let then_bb = Llvm.append_block context "then_null" f in
+          let either_null_bb = Llvm.append_block context "either_null" f in
+          let else_bb = Llvm.append_block context "else" f in
+
+          Llvm.position_at_end entry_bb builder;
+          let is_null1 = Llvm.build_is_null v1 "is_null_1" builder in
+          let is_null2 = Llvm.build_is_null v2 "is_null_2" builder in
+          let cond = Llvm.build_and is_null1 is_null2 "both" builder in
+          ignore (Llvm.build_cond_br cond both_null_bb then_bb builder);
+
+          Llvm.position_at_end both_null_bb builder; (
+            let ret = Llvm.const_int bool_t 1 in
+            ignore (Llvm.build_ret ret builder)
+          );
+
+          Llvm.position_at_end then_bb builder; (
+            let cond = Llvm.build_or is_null1 is_null2 "either" builder in
+            ignore (Llvm.build_cond_br cond either_null_bb else_bb builder)
+          );
+
+          Llvm.position_at_end either_null_bb builder; (
+            let ret = Llvm.const_int bool_t 0 in
+            ignore (Llvm.build_ret ret builder)
+          );
+
+          Llvm.position_at_end else_bb builder; (
+            let head1 = list_load_head v1 ct in
+            let tail1 = list_load_tail v1 ct in
+            let head2 = list_load_head v2 ct in
+            let tail2 = list_load_tail v2 ct in
+            let head_comp_result =
+              if ct = Type.TUnit then
+                Llvm.const_int bool_t 1
+              else
+                let comp = get_comparator ct in
+                Llvm.build_call comp [|head1; head2|] "head_eq" builder
+            in
+            let tail_comp_result =
+              Llvm.build_call f [|tail1; tail2|] "tail_eq" builder
+            in
+            let and_ = Llvm.build_and head_comp_result tail_comp_result "ret" builder in
+            ignore (Llvm.build_ret and_ builder)
+          );
+          f
+        )
       | _ -> failwith "get_printer: unimplemented"
     in
-    Hashtbl.add printers t f;
-    Llvm.position_at_end prev_bb builder;
+    Llvm.position_at_end old_bb builder;
+    Hashtbl.add comparators t f;
     f
 
 (* Boehm GC *)
@@ -511,6 +603,99 @@ let rec gen_exp node env depth =
       | _ -> failwith "type error" in
     let clos_fun = Llvm.build_pointercast clos_fun_addr (ptr fun_type) "closure.fun" builder in
     Llvm.build_call clos_fun [|new_env|] "" builder
+
+  | Exp.Match(e1, arms) ->
+    let ty = handling_lltype_of @@ ast_type node in
+    let v1 = gen_exp e1 env depth in
+    let start_bb = Llvm.insertion_block builder in
+    let the_function = Llvm.block_parent start_bb in
+
+    let merge_bb = Llvm.append_block context "merge_bb" the_function in
+    Llvm.position_at_end merge_bb builder;
+    let result =
+      if ast_type node = Type.TUnit then
+        Llvm.undef void_t
+      else (
+        Llvm.build_empty_phi ty "match_result" builder
+      )
+    in
+
+    let rec build_pattern_match arms building_bb =
+      Llvm.position_at_end building_bb builder;
+      match arms with
+      | [] ->
+        let uv = Llvm.undef ty in
+        if ast_type node <> Type.TUnit then
+          Llvm.add_incoming (uv, building_bb) result
+        ;
+        ignore (Llvm.build_br merge_bb builder);
+      | (pat, body)::next -> (
+          let matched_bb = Llvm.append_block context "matched_bb" the_function in
+          let check_bb = Llvm.append_block context "check_bb" the_function in
+
+          let env_diff : (string, int) Hashtbl.t = Hashtbl.create 10 in
+          let rec build_matching pat value value_ty env depth =
+            match pat with
+            | Exp.LiteralPat(nd) ->
+              let pat_val = gen_exp nd env depth in (
+                match value_ty with
+                | Type.TInt | Type.TBool ->
+                  let cond = Llvm.build_icmp Llvm.Icmp.Eq value pat_val "match_eq" builder in
+                  cond, env, depth
+                | Type.TUnit ->
+                  (* Unit型の値は1通りしかないため常に真 *)
+                  (Llvm.const_int bool_t 1), env, depth
+                | Type.TList(_) ->
+                  let comp = get_comparator value_ty in
+                  let ret = Llvm.build_call comp [|value; pat_val|] "ret" builder in
+                  ret, env, depth
+                | _ -> failwith ("build_matching: type error: " ^ (Type.string_of_type value_ty))
+              )
+            | Exp.WildcardPat(name) ->
+              Hashtbl.add env_depth name (depth + 1);
+              Hashtbl.add env_diff name (depth + 1);
+              let new_env = build_env env @@ Some (value, value_ty) in
+              (Llvm.const_int bool_t 1), new_env, (depth + 1)
+            | Exp.ListPat(head, tail) -> (
+                let list = value in
+                let ct = match value_ty with
+                  | Type.TList (ct) -> ct
+                  | _ -> failwith ("build_matching: type error: " ^ (Type.string_of_type value_ty))
+                in
+                let head_value = list_load_head list ct in
+                let cond, env, depth = build_matching head head_value ct env depth in
+
+                (* if cond is true then jump to next matching / othewise check tail part *)
+                let listpat_check_bb = Llvm.append_block context "listpat_check_bb" the_function in
+                ignore (Llvm.build_cond_br cond listpat_check_bb check_bb builder);
+
+                Llvm.position_at_end listpat_check_bb builder;
+                let next_value = list_load_tail list value_ty in
+                build_matching tail next_value value_ty env depth
+              )
+          in
+
+          let (cond, env, depth) = build_matching pat v1 (ast_type e1) env depth in
+          ignore (Llvm.build_cond_br cond matched_bb check_bb builder);
+
+          Llvm.position_at_end matched_bb builder;
+          let bv = gen_exp body env depth in
+          let final_mached_bb = Llvm.insertion_block builder in
+          if ast_type node <> Type.TUnit then
+            Llvm.add_incoming (bv, final_mached_bb) result
+          ;
+          ignore (Llvm.build_br merge_bb builder);
+
+          (* ワイルドカードパターンの束縛をクリア *)
+          Hashtbl.iter (fun k _ -> Hashtbl.remove env_depth k) env_diff;
+          Hashtbl.clear env_diff;
+
+          build_pattern_match next check_bb
+        )
+    in ignore (build_pattern_match arms start_bb);
+
+    Llvm.position_at_end merge_bb builder;
+    result
 
   | _ -> failwith "gen_exp: unimplemented"
 
