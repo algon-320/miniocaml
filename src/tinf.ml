@@ -96,8 +96,9 @@ let update_type_info theta =
   Hashtbl.filter_map_inplace (fun _ v -> Some(subst_ty theta v)) type_info
 
 (* tinf : tyenv -> exp -> int -> tyenv * ty * tysubst * int *)
-let rec tinf te e n =
-  let Node(e, node_id) = e in
+let rec tinf te node n =
+  let Node(e, node_id) = node in
+  (* Printf.printf "%d: %s\n" node_id (string_of_exp e); *)
   let result = (
     match e with
     | Var(s) ->
@@ -215,7 +216,7 @@ let rec tinf te e n =
               let t_p = subst_ty theta4 t_p in
               let t_e = subst_ty theta4 t_e in
               let te = subst_tyenv theta4 te in
-              let theta5 = compose_subst (compose_subst theta4 theta3) (compose_subst theta2 theta1) in
+              let theta5 = compose_subst (compose_subst theta4 theta3) theta2 in
               (te, (t_p, t_e), theta5, n)
           in
           let (te, (t_pat, t_res), theta2, n) = tinf_arms te arms n in
@@ -254,25 +255,31 @@ let rec tinf te e n =
   result
 
 and tinf_pat_arm te (pat, e) n =
-  match pat with
-  | LiteralPat(lit) ->
-    tinf_inorder2 te (lit, e) n
-  | WildcardPat(s) ->
-    let (tx, n1) = new_typevar n in
-    let te1 = ext te s tx in
-    let (te2, t2, theta2, n2) = tinf te1 e n1 in
-    let t1 = subst_ty theta2 tx in
-    let te3 = remove te2 s in
-    (te3, (t1, t2), theta2, n2)
-  | ListPat(h, t) ->
-    let (te1, (t1, t2), theta1, n1) = tinf_pat_arm te (h, e) n in
-    let (te2, (t3, t4), theta2, n2) = tinf_pat_arm te1 (t, e) n1 in
-    let (t1, t2) = (subst_ty theta2 t1, subst_ty theta2 t2) in
-    let theta3 = unify [(TList(t1), t3); (t2, t4)] in
-    let (t1, t2) = (subst_ty theta3 t1, subst_ty theta3 t2) in
-    let te3 = subst_tyenv theta3 te2 in
-    let theta4 = compose_subst theta3 (compose_subst theta2 theta1) in
-    (te3, (TList(t1), t2), theta4, n2)
+  let rec tinf_pat te pat n =
+    match pat with
+    | LiteralPat(lit) ->
+      let (a, b, c, d) = tinf te lit n in
+      a, b, c, d, []
+    | WildcardPat(s) ->
+      let (tpat, n) = new_typevar n in
+      let te = ext te s tpat in
+      te, tpat, theta0, n, [s]
+    | ListPat(h, t) ->
+      let (te, t1, theta1, n, env_diff1) = tinf_pat te h n in
+      let (te, t2, theta2, n, env_diff2) = tinf_pat te t n in
+      let t1 = subst_ty theta2 t1 in
+      let theta3 = unify [(TList(t1), t2)] in
+      let t1 = subst_ty theta3 t1 in
+      let te = subst_tyenv theta3 te in
+      let theta4 = compose_subst theta3 (compose_subst theta2 theta1) in
+      (te, TList(t1), theta4, n, env_diff1 @ env_diff2)
+  in
+  let (te, tpat, theta1, n, env_diff) = tinf_pat te pat n in
+  let (te, t1, theta2, n) = tinf te e n in
+  let tpat = subst_ty theta2 tpat in
+  let te = List.fold_left (fun te name -> remove te name) te env_diff in
+  let theta12 = compose_subst theta2 theta1 in
+  (te, (tpat, t1), theta12, n)
 
 and tinf_inorder2 te (e1, e2) n =
   let (te, t1, theta1, n) = tinf te e1 n in
