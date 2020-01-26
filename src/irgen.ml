@@ -406,9 +406,7 @@ let closure_count = ref 0
 
 let rec gen_exp node env depth =
   match Exp.take_exp node with
-  | Exp.IntLit(n) -> Llvm.const_int i64_t n
-  | Exp.BoolLit(b) -> Llvm.const_int bool_t (int_of_bool b)
-  | Exp.UnitLit -> Llvm.undef void_t
+  | Exp.Lit(lit) -> gen_literal lit @@ ast_type node
   | Exp.Add(e1, e2) ->
     Llvm.build_add (gen_exp e1 env depth) (gen_exp e2 env depth) "add" builder
   | Exp.Sub(e1, e2) ->
@@ -456,7 +454,6 @@ let rec gen_exp node env depth =
         Llvm.build_phi incoming "iftmp" builder
     )
 
-  | Exp.ListEmpty -> Llvm.const_null @@ ptr @@ lltype_of @@ ast_type node
   | Exp.ListCons(head, tail) ->
     let list_t = lltype_of @@ ast_type node in
     let head_v = gen_exp head env depth in
@@ -636,8 +633,8 @@ let rec gen_exp node env depth =
           let env_diff : (string, int) Hashtbl.t = Hashtbl.create 10 in
           let rec build_matching pat value value_ty env depth =
             match pat with
-            | Exp.LiteralPat(nd) ->
-              let pat_val = gen_exp nd env depth in (
+            | Exp.LiteralPat(lit) ->
+              let pat_val = gen_literal lit value_ty in (
                 match value_ty with
                 | Type.TInt | Type.TBool ->
                   let cond = Llvm.build_icmp Llvm.Icmp.Eq value pat_val "match_eq" builder in
@@ -698,6 +695,13 @@ let rec gen_exp node env depth =
     result
 
   | _ -> failwith "gen_exp: unimplemented"
+
+and gen_literal lit ty =
+  match lit with
+  | Exp.CInt(n) -> Llvm.const_int i64_t n
+  | Exp.CBool(b) -> Llvm.const_int bool_t (int_of_bool b)
+  | Exp.Unit -> Llvm.undef void_t
+  | Exp.ListEmpty -> Llvm.const_null @@ ptr @@ lltype_of ty
 
 let gen_main e =
   let fun_ty = Llvm.function_type i32_t [||] in

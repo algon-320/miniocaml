@@ -79,18 +79,18 @@ main:
 
 // リストリテラル
 list_inner:
-  | arg_exp { new_node @@ ListCons($1, new_node @@ ListEmpty) }
-  | arg_exp SEMICOL { new_node @@ ListCons($1, new_node @@ ListEmpty) }
+  | arg_exp { new_node @@ ListCons($1, new_node @@ Lit(ListEmpty)) }
+  | arg_exp SEMICOL { new_node @@ ListCons($1, new_node @@ Lit(ListEmpty)) }
   | arg_exp SEMICOL list_inner { new_node @@ ListCons($1, $3) }
 
 // 関数の引数になれる式
 arg_exp:
   | VAR   { new_node @@ Var $1 }
-  | INT   { new_node @@ IntLit $1 }
-  | TRUE  { new_node @@ BoolLit true }
-  | FALSE { new_node @@ BoolLit false }
+  | INT   { new_node @@ Lit(CInt $1) }
+  | TRUE  { new_node @@ Lit(CBool true) }
+  | FALSE { new_node @@ Lit(CBool false) }
 
-  | LPAREN RPAREN { new_node @@ UnitLit }
+  | LPAREN RPAREN { new_node @@ Lit(Unit) }
   
   // 演算子を関数として使う
   | LPAREN PLUS RPAREN { new_node @@ OpAdd }
@@ -103,7 +103,7 @@ arg_exp:
   | LPAREN LESS RPAREN { new_node @@ OpLt }
   
   // リスト
-  | LBRACKET RBRACKET { new_node @@ ListEmpty }
+  | LBRACKET RBRACKET { new_node @@ Lit(ListEmpty) }
   | LBRACKET list_inner RBRACKET { $2 }
   
   // 括弧で囲まれた式
@@ -117,7 +117,7 @@ exp:
   // 関数適用 (e1 e2)
   | exp arg_exp %prec APP { new_node @@ App ($1, $2) }
   // 符号の反転 -e
-  | MINUS exp %prec UNARY { new_node @@ Sub (new_node @@ IntLit 0, $2) }
+  | MINUS exp %prec UNARY { new_node @@ Sub (new_node @@ Lit(CInt 0), $2) }
   // e1 + e2
   | exp PLUS exp { new_node @@ Add ($1, $3) }
   // e1 - e2
@@ -194,17 +194,15 @@ pattern:
   | VAR
     { WildcardPat($1) }
   | INT
-    { LiteralPat(new_node @@ IntLit $1) }
+    { LiteralPat(CInt $1) }
   | TRUE
-    { LiteralPat(new_node @@ BoolLit true) }
+    { LiteralPat(CBool true) }
   | FALSE
-    { LiteralPat(new_node @@ BoolLit false) }
+    { LiteralPat(CBool false) }
   | LPAREN RPAREN
-    { LiteralPat(new_node @@ UnitLit) }
+    { LiteralPat(Unit) }
   | LBRACKET RBRACKET
-    { LiteralPat(new_node @@ ListEmpty) }
-  | LBRACKET list_inner RBRACKET
-    { LiteralPat($2) }
+    { LiteralPat(ListEmpty) }
   | pattern COLCOL pattern
     { ListPat ($1, $3) }
   | LPAREN pattern RPAREN

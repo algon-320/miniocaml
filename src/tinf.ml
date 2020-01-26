@@ -110,9 +110,7 @@ let rec tinf te node n =
           let te1 = ext te s tx in
           (te1, tx, theta0, n1)
       )
-    | IntLit(_)   -> (te, TInt, theta0, n)
-    | BoolLit(_)  -> (te, TBool, theta0, n)
-    | UnitLit     -> (te, TUnit, theta0, n)
+    | Lit(lit) -> tinf_literal te lit n
 
     | Add(e1,e2)
     | Sub(e1,e2)
@@ -174,9 +172,6 @@ let rec tinf te node n =
       let theta123 = compose_subst theta3 @@ compose_subst theta2 theta1 in
       (te, t2, theta123, n)
 
-    | ListEmpty ->
-      let (tx,n1) = new_typevar n in
-      (te, TList(tx), theta0, n1)
     | ListCons(h, t) ->
       let (te1, (t1, t2), theta1, n1) = tinf_inorder2 te (h, t) n in
       let theta2 = unify [(TList(t1), t2)] in
@@ -254,11 +249,20 @@ let rec tinf te node n =
   let (_, t, th, _) = result in Hashtbl.add type_info node_id (subst_ty th t);
   result
 
+and tinf_literal te lit n =
+  match lit with
+  | CInt _ -> (te, TInt, theta0, n)
+  | CBool _ -> (te, TBool, theta0, n)
+  | Unit -> (te, TUnit, theta0, n)
+  | ListEmpty ->
+    let (tx,n1) = new_typevar n in
+    (te, TList(tx), theta0, n1)
+
 and tinf_pat_arm te (pat, e) n =
   let rec tinf_pat te pat n =
     match pat with
     | LiteralPat(lit) ->
-      let (a, b, c, d) = tinf te lit n in
+      let (a, b, c, d) = tinf_literal te lit n in
       a, b, c, d, []
     | WildcardPat(s) ->
       let (tpat, n) = new_typevar n in

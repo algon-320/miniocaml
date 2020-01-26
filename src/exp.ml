@@ -1,8 +1,6 @@
 type ast_node = Node of exp * int
 and exp =
-  | IntLit      of int
-  | BoolLit     of bool
-  | UnitLit
+  | Lit         of literal
 
   | Add         of ast_node * ast_node
   | Sub         of ast_node * ast_node
@@ -22,7 +20,6 @@ and exp =
   | App         of ast_node * ast_node
   | Match       of ast_node * ((pattern * ast_node) list)
 
-  | ListEmpty
   | ListCons    of ast_node * ast_node
   | ListHead    of ast_node
   | ListTail    of ast_node
@@ -41,8 +38,14 @@ and exp =
   | OpGt
   | OpLt
 
+and literal =
+  | CInt of int
+  | CBool of bool
+  | ListEmpty
+  | Unit
+
 and pattern =
-  | LiteralPat  of ast_node
+  | LiteralPat  of literal
   | WildcardPat of string
   | ListPat     of pattern * pattern
 
@@ -56,12 +59,17 @@ let take_exp node = let Node (e, _) = node in e
 let take_id node = let Node (_, id) = node in id
 
 let rec string_of_exp e =
+  let string_of_literal l =
+    match l with
+    | CInt(n) -> Printf.sprintf "%d" n
+    | CBool(true) -> Printf.sprintf "true"
+    | CBool(false) -> Printf.sprintf "false"
+    | Unit -> Printf.sprintf "()"
+    | ListEmpty -> Printf.sprintf "[]"
+  in
   let rec string_of_exp_impl e parent_level =
     match e with
-    | IntLit(x) -> Printf.sprintf "%d" x
-    | BoolLit(true) -> Printf.sprintf "true"
-    | BoolLit(false) -> Printf.sprintf "false"
-    | UnitLit -> Printf.sprintf "()"
+    | Lit(l) -> string_of_literal l
 
     | Add(e1, e2) -> with_paren (parent_level > 1) (Printf.sprintf "%s + %s" (string_of_exp_impl (take_exp e1) 1) (string_of_exp_impl (take_exp e2) 1))
     | Sub(e1, e2) -> with_paren (parent_level > 1) (Printf.sprintf "%s - %s" (string_of_exp_impl (take_exp e1) 1) (string_of_exp_impl (take_exp e2) 2))
@@ -82,7 +90,6 @@ let rec string_of_exp e =
 
     | Match(e, _) -> Printf.sprintf "match %s with (.. omitted)" (string_of_exp @@ take_exp e)
 
-    | ListEmpty -> Printf.sprintf "[]"
     | ListCons(h, t) -> Printf.sprintf "((%s)::%s)" (string_of_exp @@ take_exp h) (string_of_exp @@ take_exp t)
     | ListHead(l) -> Printf.sprintf "ListHead %s" (string_of_exp @@ take_exp l)
     | ListTail(l) -> Printf.sprintf "ListTail %s" (string_of_exp @@ take_exp l)
@@ -138,9 +145,11 @@ let rec (===) tree1 tree2 =
     )
   | (x, y) when (x = y) -> true
   | _ -> false
+and equal_literal lit1 lit2 =
+  lit1 = lit2
 and equal_pattern pat1 pat2 =
   match pat1, pat2 with
-  | LiteralPat(e1), LiteralPat(e2) -> e1 === e2
+  | LiteralPat(lit1), LiteralPat(lit2) -> equal_literal lit1 lit2
   | WildcardPat(n1), WildcardPat(n2) -> n1 = n2
   | ListPat(a1, b1), ListPat(a2, b2) -> (equal_pattern a1 a2) && (equal_pattern b1 b2)
   | _ -> false

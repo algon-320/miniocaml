@@ -43,9 +43,7 @@ let rec eval e env cont =
           ))
   in
   match take_exp e with
-  | IntLit(n)     -> cont (VInt(n))
-  | BoolLit(n)    -> cont (VBool(n))
-  | UnitLit       -> cont VUnit
+  | Lit(lit) -> eval_literal lit cont
   | Var(x)        -> cont (lookup x env)
 
   | Add(e1, e2)  -> binop_int ( + ) "(+)"   e1 e2 env cont
@@ -78,7 +76,7 @@ let rec eval e env cont =
         let rec check p v =
           match p with
           | LiteralPat(lit) ->
-            if (eval lit env ident_cont) = v then
+            if (eval_literal lit ident_cont) = v then
               Some(emptyenv ())
             else
               None
@@ -95,7 +93,7 @@ let rec eval e env cont =
                 (
                   let rec list_match l_pat l_val =
                     match (l_pat, l_val) with
-                    | (LiteralPat(x), l) when (eval x env ident_cont) = (VList l) -> Some(emptyenv ())
+                    | (LiteralPat(x), l) when (eval_literal x ident_cont) = (VList l) -> Some(emptyenv ())
                     | (WildcardPat(name), l) -> Some(ext (emptyenv ()) name (VList l))
                     | (ListPat(h_p, t_p), h_v::t_v) -> (
                         match (check h_p h_v, list_match t_p t_v) with
@@ -119,7 +117,6 @@ let rec eval e env cont =
         in find patterns
       )
 
-  | ListEmpty -> cont (VList([]))
   | ListCons(h, t) ->
     eval t env (fun t ->
         eval h env (fun h ->
@@ -163,6 +160,13 @@ let rec eval e env cont =
   | OpNe  -> cont (VClos("$", "l", (new_node @@ Fun("r", (new_node @@ Ne(new_node @@ Var "l", new_node @@ Var "r")))), (emptyenv ())))
   | OpGt  -> cont (VClos("$", "l", (new_node @@ Fun("r", (new_node @@ Gt(new_node @@ Var "l", new_node @@ Var "r")))), (emptyenv ())))
   | OpLt  -> cont (VClos("$", "l", (new_node @@ Fun("r", (new_node @@ Lt(new_node @@ Var "l", new_node @@ Var "r")))), (emptyenv ())))
+
+and eval_literal lit cont =
+  match lit with
+  | CInt(n)   -> cont (VInt(n))
+  | CBool(n)  -> cont (VBool(n))
+  | Unit      -> cont VUnit
+  | ListEmpty -> cont (VList([]))
 
 and apply f arg cont =
   match f with

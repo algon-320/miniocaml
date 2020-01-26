@@ -37,99 +37,103 @@ let test line str (exp:Exp.ast_node) value ty =
 
 let nd = new_node
 
+let int_lit x = Lit(CInt x)
+let bool_lit x = Lit(CBool x)
+let unit = Lit(Unit)
+
 let () = test __LINE__ "123"
-    (nd@@IntLit 123) (VInt 123) (TInt)
+    (nd@@int_lit 123) (VInt 123) (TInt)
 let () = test __LINE__ "00123"
-    (nd@@IntLit 123) (VInt 123) (TInt)
+    (nd@@int_lit 123) (VInt 123) (TInt)
 let () = test __LINE__ "-123"
-    (nd@@Sub (nd@@IntLit 0, nd@@IntLit 123)) (VInt (-123)) (TInt)
+    (nd@@Sub (nd@@int_lit 0, nd@@int_lit 123)) (VInt (-123)) (TInt)
 let () = test __LINE__ "true"
-    (nd@@BoolLit true) (VBool true) (TBool)
+    (nd@@bool_lit true) (VBool true) (TBool)
 let () = test __LINE__ "false"
-    (nd@@BoolLit false) (VBool false) (TBool)
+    (nd@@bool_lit false) (VBool false) (TBool)
 let () = test __LINE__ "()"
-    (nd@@UnitLit) (VUnit) (TUnit)
+    (nd@@unit) (VUnit) (TUnit)
 let () = test __LINE__ "1 + 1"
-    (nd@@Add(nd@@IntLit 1, nd@@IntLit 1)) (VInt 2) (TInt)
+    (nd@@Add(nd@@int_lit 1, nd@@int_lit 1)) (VInt 2) (TInt)
 let () = test __LINE__ "1 + 2 + 3"
-    (nd@@Add(nd@@Add(nd@@IntLit 1, nd@@IntLit 2), nd@@IntLit 3)) (VInt 6) (TInt)
+    (nd@@Add(nd@@Add(nd@@int_lit 1, nd@@int_lit 2), nd@@int_lit 3)) (VInt 6) (TInt)
 let () = test __LINE__ "2 - 1"
-    (nd@@Sub(nd@@IntLit 2, nd@@IntLit 1)) (VInt 1) (TInt)
+    (nd@@Sub(nd@@int_lit 2, nd@@int_lit 1)) (VInt 1) (TInt)
 let () = test __LINE__ "1 - 2 - 3"
-    (nd@@Sub(nd@@Sub(nd@@IntLit 1, nd@@IntLit 2), nd@@IntLit 3)) (VInt (-4)) (TInt)
+    (nd@@Sub(nd@@Sub(nd@@int_lit 1, nd@@int_lit 2), nd@@int_lit 3)) (VInt (-4)) (TInt)
 let () = test __LINE__ "2 * 1"
-    (nd@@Mul(nd@@IntLit 2, nd@@IntLit 1)) (VInt 2) (TInt)
+    (nd@@Mul(nd@@int_lit 2, nd@@int_lit 1)) (VInt 2) (TInt)
 let () = test __LINE__ "2 / 1"
-    (nd@@Div(nd@@IntLit 2, nd@@IntLit 1)) (VInt 2) (TInt)
+    (nd@@Div(nd@@int_lit 2, nd@@int_lit 1)) (VInt 2) (TInt)
 
 let () = test __LINE__ "let x = 123 in x + x"
-    (nd@@Let ("x", nd@@IntLit 123, nd@@Add(nd@@Var "x", nd@@Var "x")))
+    (nd@@Let ("x", nd@@int_lit 123, nd@@Add(nd@@Var "x", nd@@Var "x")))
     (VInt 246) (TInt)
 let () = test __LINE__ "let rec f x = x - 1 in f 123"
-    (nd@@LetRec ("f", "x", nd@@Sub(nd@@Var "x", nd@@IntLit 1), nd@@App(nd@@Var "f", nd@@IntLit 123)))
+    (nd@@LetRec ("f", "x", nd@@Sub(nd@@Var "x", nd@@int_lit 1), nd@@App(nd@@Var "f", nd@@int_lit 123)))
     (VInt 122) (TInt)
 let () = test __LINE__ "let rec f x = x - 1 in f"
-    (nd@@LetRec ("f", "x", nd@@Sub(nd@@Var "x", nd@@IntLit 1), nd@@Var "f"))
-    (VClos("f", "x", nd@@Sub(nd@@Var "x", nd@@IntLit 1), [])) (TArrow(TInt, TInt))
+    (nd@@LetRec ("f", "x", nd@@Sub(nd@@Var "x", nd@@int_lit 1), nd@@Var "f"))
+    (VClos("f", "x", nd@@Sub(nd@@Var "x", nd@@int_lit 1), [])) (TArrow(TInt, TInt))
 let () = test __LINE__ "let rec f x = x in f"
     (nd@@LetRec ("f", "x", nd@@Var "x", nd@@Var "f"))
     (VClos("f", "x", nd@@Var "x", [])) (TArrow(TVar"'a", TVar "'a"))
 let () = test __LINE__ "let rec f x = x in f 123"
-    (nd@@LetRec ("f", "x", nd@@Var "x", nd@@App(nd@@Var "f", nd@@IntLit 123)))
+    (nd@@LetRec ("f", "x", nd@@Var "x", nd@@App(nd@@Var "f", nd@@int_lit 123)))
     (VInt 123) (TInt)
 let () = test __LINE__ "fun x -> x"
     (nd@@Fun("x", nd@@Var "x"))
     (VClos ("$", "x", nd@@Var "x", [])) (TArrow(TVar "'a", TVar "'a"))
 let () = test __LINE__ "fun x -> ()"
-    (nd@@Fun("x", nd@@UnitLit))
-    (VClos ("$", "x", nd@@UnitLit, [])) (TArrow(TVar "'a", TUnit))
+    (nd@@Fun("x", nd@@unit))
+    (VClos ("$", "x", nd@@unit, [])) (TArrow(TVar "'a", TUnit))
 let () = test __LINE__ "fun x -> (x + 1; x)"
-    (nd@@Fun("x", nd@@Skip(nd@@Add(nd@@Var "x", nd@@IntLit 1), nd@@Var "x")))
-    (VClos("$", "x", nd@@Skip(nd@@Add(nd@@Var "x", nd@@IntLit 1), nd@@Var "x"), [])) (TArrow(TInt, TInt))
+    (nd@@Fun("x", nd@@Skip(nd@@Add(nd@@Var "x", nd@@int_lit 1), nd@@Var "x")))
+    (VClos("$", "x", nd@@Skip(nd@@Add(nd@@Var "x", nd@@int_lit 1), nd@@Var "x"), [])) (TArrow(TInt, TInt))
 
 let () = test __LINE__ "match 123 with | 123 -> true | _ -> false"
-    (nd@@Match(nd@@IntLit 123, [(LiteralPat(nd@@IntLit 123), nd@@BoolLit true); (WildcardPat("_"), nd@@BoolLit false)]))
+    (nd@@Match(nd@@int_lit 123, [(LiteralPat(CInt 123), nd@@bool_lit true); (WildcardPat("_"), nd@@bool_lit false)]))
     (VBool true) (TBool)
 let () = test __LINE__ "match true with | x -> x | _ -> false"
-    (nd@@Match(nd@@BoolLit true, [(WildcardPat("x"), nd@@Var "x"); (WildcardPat("_"), nd@@BoolLit false)]))
+    (nd@@Match(nd@@bool_lit true, [(WildcardPat("x"), nd@@Var "x"); (WildcardPat("_"), nd@@bool_lit false)]))
     (VBool true) (TBool)
 let () = test __LINE__ "match false with | x -> x | _ -> false"
-    (nd@@Match(nd@@BoolLit false, [(WildcardPat("x"), nd@@Var "x"); (WildcardPat("_"), nd@@BoolLit false)]))
+    (nd@@Match(nd@@bool_lit false, [(WildcardPat("x"), nd@@Var "x"); (WildcardPat("_"), nd@@bool_lit false)]))
     (VBool false) (TBool)
 let () = test __LINE__ "match (123::[]) with | [] -> 0 | x::xs -> x"
-    (nd@@Match(nd@@ListCons(nd@@IntLit 123, nd@@ListEmpty), [(LiteralPat(nd@@ListEmpty), nd@@IntLit 0); (ListPat(WildcardPat("x"), WildcardPat("xs")), nd@@Var "x")]))
+    (nd@@Match(nd@@ListCons(nd@@int_lit 123, nd@@Lit(ListEmpty)), [(LiteralPat(ListEmpty), nd@@int_lit 0); (ListPat(WildcardPat("x"), WildcardPat("xs")), nd@@Var "x")]))
     (VInt 123) (TInt)
 let () = test __LINE__ "match (123::[]) with [] -> [] | x::xs -> xs"
-    (nd@@Match(nd@@ListCons(nd@@IntLit 123, nd@@ListEmpty), [(LiteralPat(nd@@ListEmpty), nd@@ListEmpty); (ListPat(WildcardPat("x"), WildcardPat("xs")), nd@@Var "xs")]))
+    (nd@@Match(nd@@ListCons(nd@@int_lit 123, nd@@Lit(ListEmpty)), [(LiteralPat(ListEmpty), nd@@Lit(ListEmpty)); (ListPat(WildcardPat("x"), WildcardPat("xs")), nd@@Var "xs")]))
     (VList []) (TList (TInt))
 
 let () = test __LINE__ "[]"
-    (nd@@ListEmpty)
+    (nd@@Lit(ListEmpty))
     (VList []) (TList (TVar "'a"))
 let () = test __LINE__ "1::2::3::[]"
-    (nd@@ListCons(nd@@IntLit 1, nd@@ListCons(nd@@IntLit 2, nd@@ListCons(nd@@IntLit 3, nd@@ListEmpty))))
+    (nd@@ListCons(nd@@int_lit 1, nd@@ListCons(nd@@int_lit 2, nd@@ListCons(nd@@int_lit 3, nd@@Lit(ListEmpty)))))
     (VList [VInt 1; VInt 2; VInt 3]) (TList TInt)
 let () = test __LINE__ "[1; 2; 3]"
-    (nd@@ListCons(nd@@IntLit 1, nd@@ListCons(nd@@IntLit 2, nd@@ListCons(nd@@IntLit 3, nd@@ListEmpty))))
+    (nd@@ListCons(nd@@int_lit 1, nd@@ListCons(nd@@int_lit 2, nd@@ListCons(nd@@int_lit 3, nd@@Lit(ListEmpty)))))
     (VList [VInt 1; VInt 2; VInt 3]) (TList TInt)
 let () = test __LINE__ "1::[2; 3]"
-    (nd@@ListCons(nd@@IntLit 1, nd@@ListCons(nd@@IntLit 2, nd@@ListCons(nd@@IntLit 3, nd@@ListEmpty))))
+    (nd@@ListCons(nd@@int_lit 1, nd@@ListCons(nd@@int_lit 2, nd@@ListCons(nd@@int_lit 3, nd@@Lit(ListEmpty)))))
     (VList [VInt 1; VInt 2; VInt 3]) (TList TInt)
 let () = test __LINE__ "ListHead (1::[])"
-    (nd@@ListHead (nd@@ListCons(nd@@IntLit 1, nd@@ListEmpty)))
+    (nd@@ListHead (nd@@ListCons(nd@@int_lit 1, nd@@Lit(ListEmpty))))
     (VInt 1) (TInt)
 let () = test __LINE__ "ListHead ([1]::[])"
-    (nd@@ListHead (nd@@ListCons(nd@@ListCons(nd@@IntLit 1, nd@@ListEmpty), nd@@ListEmpty)))
+    (nd@@ListHead (nd@@ListCons(nd@@ListCons(nd@@int_lit 1, nd@@Lit(ListEmpty)), nd@@Lit(ListEmpty))))
     (VList [VInt 1]) (TList TInt)
 let () = test __LINE__ "ListTail (1::[])"
-    (nd@@ListTail (nd@@ListCons(nd@@IntLit 1, nd@@ListEmpty)))
+    (nd@@ListTail (nd@@ListCons(nd@@int_lit 1, nd@@Lit(ListEmpty))))
     (VList []) (TList TInt)
 
 let () = test __LINE__ "Print 123"
-    (nd@@Print(nd@@IntLit 123))
+    (nd@@Print(nd@@int_lit 123))
     (VUnit) (TUnit)
 let () = test __LINE__ "(); 123"
-    (nd@@Skip(nd@@UnitLit, nd@@IntLit 123))
+    (nd@@Skip(nd@@unit, nd@@int_lit 123))
     (VInt 123) (TInt)
 
 let () = if !all_passed then print_string "all tests passed !\n"
