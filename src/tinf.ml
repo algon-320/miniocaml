@@ -95,6 +95,8 @@ let type_info : (int, Type.ty) Hashtbl.t = Hashtbl.create 256
 let update_type_info theta =
   Hashtbl.filter_map_inplace (fun _ v -> Some(subst_ty theta v)) type_info
 
+let ast_type node = Hashtbl.find type_info @@ Exp.take_id node
+
 (* tinf : tyenv -> exp -> int -> tyenv * ty * tysubst * int *)
 let rec tinf te node n =
   let Node(e, node_id) = node in

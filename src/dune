@@ -5,7 +5,7 @@
  (name main)
  (wrapped false)
  (libraries llvm llvm.analysis llvm.scalar_opts llvm.executionengine llvm.target)
- (modules lexer parser parser_state parser_wrapper eval exp value type tinf irgen))
+ (modules lexer parser parser_state parser_wrapper eval exp value type tinf irgen match_completeness))
 
 (executable
  (name miniocaml)

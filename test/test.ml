@@ -136,4 +136,26 @@ let () = test __LINE__ "(); 123"
     (nd@@Skip(nd@@unit, nd@@int_lit 123))
     (VInt 123) (TInt)
 
+open Match_completeness
+let () = assert (is_exhausted TInt [LiteralPat(CInt 1)] = false)
+let () = assert (is_exhausted TInt [LiteralPat(CInt 1); WildcardPat ""] = true)
+let () = assert (is_exhausted TInt [WildcardPat ""] = true)
+
+let () = assert (is_exhausted TBool [LiteralPat(CBool true)] = false)
+let () = assert (is_exhausted TBool [LiteralPat(CBool true); LiteralPat(CBool false)] = true)
+let () = assert (is_exhausted TBool [LiteralPat(CBool true); WildcardPat ""] = true)
+let () = assert (is_exhausted TBool [WildcardPat ""] = true)
+
+let () = assert (is_exhausted TUnit [LiteralPat(Unit)] = true)
+let () = assert (is_exhausted TUnit [LiteralPat(Unit); WildcardPat ""] = true)
+let () = assert (is_exhausted TUnit [WildcardPat ""] = true)
+
+let () = assert (is_exhausted (TList TUnit) [LiteralPat (ListEmpty)] = false)
+let () = assert (is_exhausted (TList TUnit) [LiteralPat (ListEmpty); ListPat(WildcardPat "", WildcardPat "")] = true)
+let () = assert (is_exhausted (TList TUnit) [LiteralPat (ListEmpty); ListPat(LiteralPat Unit, WildcardPat "")] = true)
+let () = assert (is_exhausted (TList TUnit) [LiteralPat (ListEmpty); ListPat(WildcardPat "", LiteralPat(ListEmpty)); ListPat(WildcardPat "", ListPat(LiteralPat Unit, WildcardPat ""))] = true)
+let () = assert (is_exhausted (TList TUnit) [WildcardPat ""] = true)
+
+let () = assert (is_exhausted (TList TBool) [ListPat(LiteralPat(CBool true), WildcardPat ""); ListPat(LiteralPat(CBool false), WildcardPat ""); LiteralPat(ListEmpty)] = true)
+
 let () = if !all_passed then print_string "all tests passed !\n"

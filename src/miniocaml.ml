@@ -23,6 +23,10 @@ let rec repl () =
      match ast with
      | Some ast ->
        let ty = Tinf.rename_typevar @@ Tinf.get_type ast in
+       (
+         if not (Match_completeness.all_match_exhausted ast) then
+           failwith "pattern matching is not exhausted"
+       );
        let v = Eval.eval ast (Eval.emptyenv ()) Eval.ident_cont in
        Printf.printf "- : %s = %s\n" (Type.string_of_type ty) (Value.string_of_value v);
      | None -> ()

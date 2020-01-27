@@ -123,7 +123,7 @@ let climbup_env_func =
 
   f
 
-let ast_type node = Hashtbl.find Tinf.type_info @@ Exp.take_id node
+let ast_type = Tinf.ast_type
 
 let global_constants : (Llvm.llvalue, Llvm.llvalue) Hashtbl.t = Hashtbl.create 256
 let get_global_constant const =
