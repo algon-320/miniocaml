@@ -10,8 +10,8 @@ type value =
 
 let rec string_of_value v =
   match v with
-  | VInt(x) -> Printf.sprintf "%d" x
-  | VBool(true) -> Printf.sprintf "true"
+  | VInt(x)      -> Printf.sprintf "%d" x
+  | VBool(true)  -> Printf.sprintf "true"
   | VBool(false) -> Printf.sprintf "false"
   | VList(l) ->
     let rec str_of_list l =
@@ -39,9 +39,15 @@ and string_of_env env =
 let rec equal value1 value2 =
   match value1, value2 with
   | VList(l1), VList(l2) ->
-    (try List.for_all2 equal l1 l2 with Invalid_argument _ -> false)
+    (try
+       List.for_all2 equal l1 l2
+     with Invalid_argument _ ->
+       false
+    )
   | VClos(f1, a1, b1, e1), VClos(f2, a2, b2, e2) ->
     (f1 = f2) && (a1 = a2) && (b1 === b2) &&
-    (List.for_all2 (fun (n1, a1) (n2, a2) -> (n1 = n2) && (equal a1 a2)) e1 e2)
+    (List.for_all2
+       (fun (n1, a1) (n2, a2) ->
+          (n1 = n2) && (equal a1 a2)) e1 e2)
   | x, y when x = y -> true
   | _ -> false

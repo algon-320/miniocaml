@@ -16,9 +16,9 @@ let is_atomic = function
 (* 型を文字列化 *)
 let rec string_of_type ty =
   match ty with
-  | TInt -> Printf.sprintf "int"
-  | TBool -> Printf.sprintf "bool"
-  | TUnit -> Printf.sprintf "unit"
+  | TInt    -> Printf.sprintf "int"
+  | TBool   -> Printf.sprintf "bool"
+  | TUnit   -> Printf.sprintf "unit"
   | TVar(s) -> Printf.sprintf "%s" s
   | TArrow(t1, t2) ->
     let (s1, s2) = (string_of_type t1, string_of_type t2) in

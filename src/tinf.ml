@@ -100,7 +100,6 @@ let ast_type node = Hashtbl.find type_info @@ Exp.take_id node
 (* tinf : tyenv -> exp -> int -> tyenv * ty * tysubst * int *)
 let rec tinf te node n =
   let Node(e, node_id) = node in
-  (* Printf.printf "%d: %s\n" node_id (string_of_exp e); *)
   let result = (
     match e with
     | Var(s) ->

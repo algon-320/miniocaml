@@ -72,17 +72,13 @@ let compile filename options =
         Exp.new_node @@ Exp.Lit(Exp.Unit)
     in
 
-    (* Hashtbl.iter (fun k v -> Printf.printf "[%s] => [%s]\n" (string_of_int k) (Type.string_of_type v)) Tinf.type_info;
-       flush stdout; *)
-    (* Printf.printf "%s\n" @@ Exp.string_of_exp ast;
-       flush stdout; *)
-
     let triple = Llvm_target.Target.default_triple () in
     let target = Llvm_target.Target.by_triple triple in
     let reloc = Llvm_target.RelocMode.PIC in
     let target_machine = Llvm_target.TargetMachine.create target ~triple:triple ~reloc_mode:reloc in
     let mpm = Llvm.PassManager.create () in
 
+    (* LLVM optimization passes *)
     Llvm_scalar_opts.add_instruction_combination mpm;
     Llvm_scalar_opts.add_reassociation mpm;
     Llvm_scalar_opts.add_gvn mpm;

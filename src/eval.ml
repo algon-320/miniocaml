@@ -44,22 +44,22 @@ let rec eval e env cont =
   in
   match take_exp e with
   | Lit(lit) -> eval_literal lit cont
-  | Var(x)        -> cont (lookup x env)
+  | Var(x)   -> cont (lookup x env)
 
-  | Add(e1, e2)  -> binop_int ( + ) "(+)"   e1 e2 env cont
-  | Sub(e1, e2)   -> binop_int ( - ) "(-)"   e1 e2 env cont
+  | Add(e1, e2) -> binop_int ( + ) "(+)"   e1 e2 env cont
+  | Sub(e1, e2) -> binop_int ( - ) "(-)"   e1 e2 env cont
   | Mul(e1, e2) -> binop_int ( * ) "( * )" e1 e2 env cont
-  | Div(e1, e2)   -> binop_int ( / ) "(/)"   e1 e2 env cont
+  | Div(e1, e2) -> binop_int ( / ) "(/)"   e1 e2 env cont
 
   | If(cond, e1, e2) -> eval cond env (function
       | VBool(true) -> eval e1 env cont
       | VBool(false) -> eval e2 env cont
       | _ -> failwith "if: first argument must be bool value"
     )
-  | Eq(e1, e2)      -> cond_op (=) (=) (=) "(=)"     e1 e2 env cont
-  | Ne(e1, e2)   -> cond_op (<>) (<>) (<>) "(<>)" e1 e2 env cont
+  | Eq(e1, e2) -> cond_op (=) (=) (=) "(=)"     e1 e2 env cont
+  | Ne(e1, e2) -> cond_op (<>) (<>) (<>) "(<>)" e1 e2 env cont
   | Gt(e1, e2) -> cond_op (>) (>) (>) "(>)"     e1 e2 env cont
-  | Lt(e1, e2)    -> cond_op (<) (<) (<) "(<)"     e1 e2 env cont
+  | Lt(e1, e2) -> cond_op (<) (<) (<) "(<)"     e1 e2 env cont
 
   | Let(x, e1, e2) -> eval e1 env (fun body -> eval e2 (ext env x body) cont)
   | LetRec(f, x, e1, e2) -> eval e2 (ext env f (VClos (f, x, e1, env))) cont
@@ -158,10 +158,10 @@ let rec eval e env cont =
   | OpSub -> cont (VClos("$", "l", (new_node @@ Fun("r", (new_node @@ Sub(new_node @@ Var "l", new_node @@ Var "r")))), (emptyenv ())))
   | OpMul -> cont (VClos("$", "l", (new_node @@ Fun("r", (new_node @@ Mul(new_node @@ Var "l", new_node @@ Var "r")))), (emptyenv ())))
   | OpDiv -> cont (VClos("$", "l", (new_node @@ Fun("r", (new_node @@ Div(new_node @@ Var "l", new_node @@ Var "r")))), (emptyenv ())))
-  | OpEq  -> cont (VClos("$", "l", (new_node @@ Fun("r", (new_node @@ Eq(new_node @@ Var "l", new_node @@ Var "r")))), (emptyenv ())))
-  | OpNe  -> cont (VClos("$", "l", (new_node @@ Fun("r", (new_node @@ Ne(new_node @@ Var "l", new_node @@ Var "r")))), (emptyenv ())))
-  | OpGt  -> cont (VClos("$", "l", (new_node @@ Fun("r", (new_node @@ Gt(new_node @@ Var "l", new_node @@ Var "r")))), (emptyenv ())))
-  | OpLt  -> cont (VClos("$", "l", (new_node @@ Fun("r", (new_node @@ Lt(new_node @@ Var "l", new_node @@ Var "r")))), (emptyenv ())))
+  | OpEq  -> cont (VClos("$", "l", (new_node @@ Fun("r", (new_node @@ Eq (new_node @@ Var "l", new_node @@ Var "r")))), (emptyenv ())))
+  | OpNe  -> cont (VClos("$", "l", (new_node @@ Fun("r", (new_node @@ Ne (new_node @@ Var "l", new_node @@ Var "r")))), (emptyenv ())))
+  | OpGt  -> cont (VClos("$", "l", (new_node @@ Fun("r", (new_node @@ Gt (new_node @@ Var "l", new_node @@ Var "r")))), (emptyenv ())))
+  | OpLt  -> cont (VClos("$", "l", (new_node @@ Fun("r", (new_node @@ Lt (new_node @@ Var "l", new_node @@ Var "r")))), (emptyenv ())))
 
 and eval_literal lit cont =
   match lit with
