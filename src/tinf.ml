@@ -233,6 +233,8 @@ let rec tinf te node n =
       let (te, _, theta1, n) = tinf te e n in
       (te, TUnit, theta1, n)
 
+    | ReadInt -> (te, TInt, theta0, n)
+
     | CallCC(c) ->
       (* c: ('a -> 'a) -> 'a,  CallCC(c): 'a *)
       let (te1, t1, theta1, n1) = tinf te c n in

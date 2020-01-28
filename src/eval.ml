@@ -149,6 +149,8 @@ let rec eval e env cont =
         cont VUnit
     )
 
+  | ReadInt -> cont (VInt (read_int ()))
+
   | CallCC(e) ->
     eval e env (fun func_val -> apply func_val (VCont cont) cont)
 

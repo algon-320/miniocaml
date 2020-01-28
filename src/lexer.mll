@@ -53,6 +53,7 @@ rule token = parse
   | "ListHead" { HEAD }
   | "ListTail" { TAIL }
   | "Print"    { PRINT }
+  | "ReadInt"  { READ_INT }
 
   (* 変数 *)
   | identifier

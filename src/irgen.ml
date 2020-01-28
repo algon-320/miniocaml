@@ -137,6 +137,10 @@ let get_global_constant_string str =
   let v = get_global_constant @@ Llvm.const_stringz context str in
   Llvm.build_pointercast v voidptr_t "" builder
 
+let scanf =
+  let scanf_type = Llvm.var_arg_function_type void_t [|voidptr_t|] in
+  Llvm.declare_function "scanf" scanf_type the_module
+
 let printf =
   let printf_type = Llvm.var_arg_function_type void_t [|voidptr_t|] in
   Llvm.declare_function "printf" printf_type the_module
@@ -486,6 +490,13 @@ let rec gen_exp node env depth =
     let newline = get_global_constant_string "\n" in
     ignore (Llvm.build_call printf [|newline|] "" builder);
     Llvm.undef void_t
+
+  | Exp.ReadInt -> (
+      let int_buf = Llvm.build_alloca i64_t "scanf_buf_int" builder in
+      let fmt = get_global_constant_string "%lld" in
+      ignore (Llvm.build_call scanf [|fmt; int_buf|] "" builder);
+      Llvm.build_load int_buf "read_int" builder
+    )
 
   | Exp.Var(name) -> (
       try

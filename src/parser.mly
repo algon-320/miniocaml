@@ -45,6 +45,7 @@ open Exp
 %token HEAD     // "ListHead"
 %token TAIL     // "ListTail"
 %token PRINT    // "Print"
+%token READ_INT // "ReadInt"
 
 // 制御記号
 %token EOF
@@ -164,6 +165,9 @@ exp:
 
   // Print
   | PRINT arg_exp %prec APP { new_node @@ Print ($2) }
+
+  // ReadInt
+  | READ_INT { new_node @@ ReadInt }
 
   | error
     { 

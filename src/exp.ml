@@ -26,6 +26,7 @@ and exp =
 
   | Skip        of ast_node * ast_node
   | Print       of ast_node
+  | ReadInt
 
   | CallCC      of ast_node
 
@@ -96,6 +97,7 @@ let rec string_of_exp e =
 
     | Skip(e1, e2) -> Printf.sprintf "(%s; %s)" (string_of_exp @@ take_exp e1) (string_of_exp @@ take_exp e2)
     | Print(e) -> Printf.sprintf "Print %s" (string_of_exp @@ take_exp e)
+    | ReadInt -> Printf.sprintf "ReadInt"
 
     | CallCC(e) -> Printf.sprintf "CallCC(%s)" (string_of_exp @@ take_exp e)
 
