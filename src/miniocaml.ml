@@ -18,21 +18,26 @@ compile-options:
 let rec repl () =
   print_string "miniocaml # ";
   flush stdout;
-  (try
-     let ast = Parser_wrapper.parse @@ Lexing.from_channel stdin in
-     match ast with
-     | Some ast ->
-       let ty = Tinf.rename_typevar @@ Tinf.get_type ast in
-       (
-         if not (Match_completeness.all_match_exhausted ast) then
-           failwith "pattern matching is not exhausted"
-       );
-       let v = Eval.eval ast (Eval.emptyenv ()) Eval.ident_cont in
-       Printf.printf "- : %s = %s\n" (Type.string_of_type ty) (Value.string_of_value v);
-     | None -> ()
-   with Failure e ->
-     print_endline e;
-     flush stdout;
+  (
+    try
+      let ast = Parser_wrapper.parse @@ Lexing.from_channel stdin in
+      match ast with
+      | Some ast ->
+        let ty = Tinf.rename_typevar @@ Tinf.get_type ast in
+        (
+          if not (Match_completeness.all_match_exhausted ast) then
+            failwith "pattern matching is not exhausted"
+        );
+        let v = Eval.eval ast (Eval.emptyenv ()) Eval.ident_cont in
+        Printf.printf "- : %s = %s\n" (Type.string_of_type ty) (Value.string_of_value v);
+      | None -> ()
+    with
+    | Parser_state.Exit ->
+      print_newline ();
+      exit 0;
+    | Failure e ->
+      print_endline e;
+      flush stdout;
   );
   repl ()
 

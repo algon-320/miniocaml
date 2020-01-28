@@ -73,7 +73,7 @@ open Exp
 main:
   | exp EOF { Some ($1) }
   | exp SEMICOLCOL { Some ($1) }
-  | EOF { print_newline (); exit 0 } // exit with 0
+  | EOF { raise Parser_state.Exit }
   | SEMICOLCOL { None }
 ;
 
