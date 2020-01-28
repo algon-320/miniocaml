@@ -1,5 +1,7 @@
 {
 open Parser
+
+let comment_nested = ref 0
 }
 
 let space = [' ' '\t' '\r']
@@ -8,7 +10,22 @@ let alpha = ['A'-'Z' 'a'-'z' '_']
 let alnum = digit | alpha | '\''
 let identifier = alpha alnum*
 
-rule token = parse
+(* ネストしたコメント *)
+rule comment = parse
+  | "(*"
+    { comment_nested := !comment_nested + 1;
+      comment lexbuf }
+  | "*)"
+    { comment_nested := !comment_nested - 1;
+      if !comment_nested = 0 then
+        token lexbuf
+      else
+        comment lexbuf }
+  | '(' { comment lexbuf }
+  | '*' { comment lexbuf }
+  | [^ '(' '*'] { comment lexbuf }
+
+and token = parse
   (* 整数定数 *)
   | digit+
     { let str = Lexing.lexeme lexbuf in
@@ -27,12 +44,17 @@ rule token = parse
   | "::"       { COLCOL }
   | ";;"       { SEMICOLCOL }
 
+  (* コメント開始 *)
+  | "(*"
+    { comment_nested := !comment_nested + 1;
+      comment lexbuf }
+
   (* 括弧類 *)
   | '('        { LPAREN }
   | ')'        { RPAREN }
   | '['        { LBRACKET }
   | ']'        { RBRACKET }
-  
+
   (* 区切り記号 *)
   | "->"       { ARROW }
   | '|'        { VBAR }
