@@ -80,6 +80,10 @@ let compile filename options =
 
     (* LLVM optimization passes *)
     Llvm_scalar_opts.add_instruction_combination mpm;
+    Llvm_scalar_opts.add_memory_to_register_promotion mpm;
+    Llvm_scalar_opts.add_memcpy_opt mpm;
+    Llvm_scalar_opts.add_tail_call_elimination mpm;
+    Llvm_scalar_opts.add_licm mpm;
     Llvm_scalar_opts.add_reassociation mpm;
     Llvm_scalar_opts.add_gvn mpm;
     Llvm_scalar_opts.add_cfg_simplification mpm;
