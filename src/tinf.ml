@@ -157,7 +157,16 @@ let rec tinf te node n =
       let theta3 = compose_subst theta2 theta1 in
       (te2, t3, theta3, n2)
     | Let(x, e1, e2) ->
-      tinf te (new_node @@ App(new_node @@ Fun(x, e2), e1)) n
+      let (tx, n) = new_typevar n in
+      let te = ext te x tx in
+      let (te, t1, theta1, n) = tinf te e1 n in
+      let theta2 = unify [(t1, tx)] in
+      let te = subst_tyenv theta2 te in
+      let (te, t2, theta3, n) = tinf te e2 n in
+      let te = remove te x in
+      let theta123 = compose_subst theta3 @@ compose_subst theta2 theta1 in
+      (te, t2, theta123, n)
+
     | LetRec(f, x, e1, e2) ->
       let (tx, n) = new_typevar n in
       let (tf, n) = new_typevar n in

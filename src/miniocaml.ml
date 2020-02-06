@@ -4,7 +4,7 @@ let usage = "Mini-OCaml compiler / interpreter
 
 Usage:
     miniocaml [repl-options...]                  # as interpreter
-    miniocaml [compile-options...] souce-file    # as compiler
+    miniocaml [compile-options...] souce-file    # as native compiler
 
 repl-options:
     --help, -h        print this help to stderr.
@@ -55,7 +55,9 @@ let rec repl options =
         let ast = Parser_wrapper.parse @@ Lexing.from_channel stdin in
         match ast with
         | Some ast ->
-          let ty = Tinf.rename_typevar @@ Tinf.get_type ast in
+          let (_, ty, theta, _) = Tinf.tinf [] ast 0 in
+          Tinf.update_type_info theta;
+          let ty = Tinf.rename_typevar ty in
           (
             if not (Match_completeness.all_match_exhausted ast) then
               failwith "pattern matching is not exhausted"
