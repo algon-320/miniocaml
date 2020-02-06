@@ -21,7 +21,7 @@ type options =
   | EmitLLVM
   | ZAM
 
-let rec repl options =
+let repl options =
   let run_as_zam = ref false in
   let rec option_extract = function
     | [] -> ()

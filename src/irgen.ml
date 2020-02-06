@@ -57,7 +57,7 @@ and lltype_of = function
   | Type.TUnit -> void_t
   | Type.TList(t) -> get_list_type t
   | Type.TArrow(_, _) -> closure_t
-  | Type.TVar(name) -> failwith "lltype_of: TVar unimplemented"
+  | Type.TVar(_) -> failwith "lltype_of: TVar unimplemented"
 
 and handling_lltype_of ty =
   if Type.is_atomic ty then

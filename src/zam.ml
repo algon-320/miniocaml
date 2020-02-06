@@ -99,7 +99,7 @@ let rec exec code env arg_stack ret_stack =
     | ZAM_EndLet ->
       (
         match env with
-        | v::e ->
+        | _::e ->
           exec next e arg_stack ret_stack
         | _ -> failwith "ZAM_EndLet: env is empty"
       )

@@ -18,7 +18,7 @@ let position x venv =
   in impl x venv 0
 
 (* コンパイル結果が定数かを返す true / false *)
-let rec check_const code =
+let check_const code =
   if (List.length code) = 1 then
     match code with
     | (ZAM_Ldi _)::[] | (ZAM_Ldb _)::[] -> true
@@ -59,7 +59,7 @@ let rec compile node venv =
       | BoolConst b -> [ZAM_Ldb b]
       | _ -> [ZAM_Access pos]
     )
-  | Lit(lit) -> compile_literal lit venv
+  | Lit(lit) -> compile_literal lit
 
   | Add(e1, e2) -> comp_binop e1 e2 venv (int_folding (+)) [ZAM_Add] "Plus"
   | Sub(e1, e2) -> comp_binop e1 e2 venv (int_folding (-)) [ZAM_Sub] "Sub"
@@ -94,7 +94,7 @@ let rec compile node venv =
     )
   | _ -> failwith "unsupported"
 
-and compile_literal lit venv =
+and compile_literal lit =
   match lit with
   | CInt(n) -> [ZAM_Ldi(n)]
   | CBool(b) -> [ZAM_Ldb(b)]
