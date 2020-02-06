@@ -1,0 +1,7 @@
+let fun_list = [(fun x -> x + x); (fun x -> x * x)] in
+(
+  let f1 = ListHead fun_list in
+  Print (f1 123);
+  let f2 = ListHead (ListTail fun_list) in
+  Print (f2 123)
+)

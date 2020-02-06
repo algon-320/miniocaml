@@ -1,0 +1,1 @@
+Print ((fun x -> fun y -> x + y) 10 2)

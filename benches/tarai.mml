@@ -1,0 +1,10 @@
+let rec tarai x = fun y -> fun z ->
+  if x < (y + 1) then
+    y
+  else
+    tarai (tarai (x-1) y z) (tarai (y-1) z x) (tarai (z-1) x y)
+in
+let x = ReadInt in
+let y = ReadInt in
+let z = ReadInt in
+Print (tarai x y z)

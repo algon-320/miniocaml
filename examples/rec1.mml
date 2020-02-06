@@ -1,0 +1,1 @@
+let rec f n = n + 1 in Print (f 10)

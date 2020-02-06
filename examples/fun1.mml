@@ -1,0 +1,2 @@
+let f = (fun x -> (fun y -> x + y)) in
+Print (f 10 20)

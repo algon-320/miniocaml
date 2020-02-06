@@ -1,0 +1,13 @@
+(* 標準入力から整数を1つ読み込む *)
+let n = ReadInt in
+
+(* 整数をn個読み込み、それらをリストにして返す *)
+let rec read_list n =
+  if n = 0 then
+    []
+  else
+    let tmp = ReadInt in
+    tmp::(read_list (n-1))
+in
+let l = read_list n in
+Print l

@@ -1,0 +1,5 @@
+Print (
+  match 1 with
+  | 0 -> 0
+  | x -> 2 * x
+)

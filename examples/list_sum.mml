@@ -1,0 +1,20 @@
+let l =
+  let rec gen_list n =
+    if n = 0 then
+      []
+    else
+      n::(gen_list (n - 1))
+  in gen_list 10
+in
+let rec iter f = fun l ->
+  match l with
+  | [] -> ()
+  | x::xs -> (f x); iter f xs
+in
+let p = iter (fun x -> x+0; Print (x)) in
+p l;
+let rec sum l =
+  match l with
+  | [] -> 0
+  | h::t -> h + (sum t)
+in Print (sum l)

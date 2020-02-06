@@ -1,0 +1,6 @@
+let x = 123 in
+(
+  Print x;
+  let x = false in
+  Print x
+)

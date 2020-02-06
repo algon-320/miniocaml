@@ -1,0 +1,1 @@
+let f = let x = 10 in fun y -> x + y in Print (f 20)

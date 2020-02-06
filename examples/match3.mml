@@ -1,0 +1,6 @@
+Print (
+  let x = 999 in
+  match [1; 2; 3] with
+  | x::9::3::[] -> x
+  | _ -> x
+)

@@ -1,0 +1,7 @@
+let rec sum n =
+  if n = 0 then
+    0
+  else
+    (let tmp = sum (n - 1) in n)
+in
+Print (sum 10)
