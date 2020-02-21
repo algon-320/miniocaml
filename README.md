@@ -3,20 +3,21 @@
 [主専攻実験「関数プログラミング」](http://logic.cs.tsukuba.ac.jp/jikken/)の成果物
 
 ## 依存
-- LLVM9
+- [LLVM9](http://releases.llvm.org/)
 - dune
 - OCaml libraries
   - llvm
   - ctypes
+- [libgc](https://www.hboehm.info/gc/)
 
-## 使い方
+## コンパイル・実行
 ```
 $ make
 $ ./miniocaml  # REPL
 $ ./miniocaml examples/fib1.mml  # compiler
 ```
 
-## 機能
+## 言語機能
 
 ### 型
 - int
@@ -37,7 +38,7 @@ miniocaml # 1 + 1;;
 - : int = 2
 miniocaml # 2 * 3 / 6;;
 - : int = 1
-miniocaml # 1 - 2 * 3;;          
+miniocaml # 1 - 2 * 3;;
 - : int = -5
 miniocaml # (1 - 2) * 3;;
 - : int = -3
